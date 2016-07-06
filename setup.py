@@ -20,7 +20,7 @@ setup(
            "interpDetect",
            sources=["interpDetect.pyx", "SpkDslowFilter.cpp"],
            language="c++",
-           extra_compile_args=['-std=c++11', '-Wunused-function'],
+           extra_compile_args=['-std=c++11'], # , '-funroll-loops', '-ftree-vectorize', '-ftree-vectorizer-verbose=1'],
            )),
     include_dirs=[numpy.get_include()]
 )
