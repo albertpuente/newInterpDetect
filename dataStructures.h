@@ -1,4 +1,4 @@
-#include <algorithm> // sort, max, min
+#include <algorithm> // sort, max, min, fill
 #include <vector>
 #include <climits>
 #include <queue>
@@ -8,7 +8,7 @@ struct Spike {
 	int t;
 	int chX, chY;
 	unsigned short v;
-    bool active;
+    bool relevant;
 	float distance(int chX2, int chY2) {
 		return sqrt(pow((float) chX - (float) chX2, 2) + 
 					pow((float) chY - (float) chX2, 2)   );
@@ -54,7 +54,7 @@ struct CheckSpace {
 	}
 
 	void pruneOldSpikes(int t) {
-		while (entries.front().t < t - maxT) {
+		while (not entries.empty() && entries.front().t < t - maxT) {			
 			Entry e = entries.front();
 			auto it = spikes[e.x][e.y].begin();
 			while (it != spikes[e.x][e.y].end()) {
@@ -88,12 +88,11 @@ struct CheckSpace {
 				for (Spike & s : spikes[i][j]) {
 					if (s.distance(chX, chY) < maxD) { 
                         collision = true;
-						// Dactivate smaller spikes
-                        // TO-DO
+						s.relevant = False;
                     }
 				}
 			}
 		}
-		return false;
+		return collision;
 	}
 };

@@ -11,7 +11,7 @@ from readUtils import openHDF5file, getHDF5params, readHDF5
 
 cdef extern from "SpkDslowFilter.h" namespace "SpkDslowFilter":
     cdef cppclass InterpDetection:
-        InterpDetection(int rows, int cols) except +
+        InterpDetection(int rows, int cols, double samplingRate) except +
         void detect(unsigned short* vm, long t0, long t1)
 
 def interpDetect(filePath):
@@ -24,7 +24,7 @@ def interpDetect(filePath):
     nSec = nFrames / samplingRate
 
     # Start detection
-    cdef InterpDetection * SpkD = new InterpDetection(64, 64)
+    cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
     tInc = min(500000, nFrames)
     tCut = 20
 
