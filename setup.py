@@ -20,7 +20,7 @@ setup(
            "interpDetect",
            sources=["interpDetect.pyx", "SpkDslowFilter.cpp"],
            language="c++",
-           extra_compile_args=['-std=c++11'] #, '-O3']
+           extra_compile_args=['-std=c++11', '-O3']
     )),
     include_dirs=[numpy.get_include()]
 )

@@ -10,9 +10,12 @@ struct Spike {
 	int chX, chY;
 	int amp;
     bool relevant;
-	float distance(int chX2, int chY2) {
-		return sqrt(pow((float) chX - (float) chX2, 2) + 
-					pow((float) chY - (float) chY2, 2)   );
+	inline float distance(int chX2, int chY2) {
+		if (chX == chX2 and chY == chY2)
+			return 0;
+		else 
+			return sqrt(pow((float) chX - (float) chX2, 2) + 
+						pow((float) chY - (float) chY2, 2)   );
 	}
 };
 
@@ -85,16 +88,15 @@ struct CheckSpace {
 		// Chunk where the channel lies
 		int x = chX/chunkSize;
 		int y = chY/chunkSize;
-
 		// In addition, check (if needed) the surrounding 8 chunks:
 		// O O O
 		// O X O 
 		// O O O
         bool collision = false;
-		for (int i = max(x - 1, 0); i < min(x + 1, xSize); i++) {
-			for (int j = max(y - 1, 0); j < min(y + 1, ySize); j++) {				
+		for (int i = max(x - 1, 0); i < min(x + 2, xSize/chunkSize); i++) {
+			for (int j = max(y - 1, 0); j < min(y + 2, ySize/chunkSize); j++) {				
 				// Check all Spikes in chunk
-				for (Spike & s : spikes[i][j]) {
+				for (Spike & s : spikes[i][j]) {					
 					if (s.distance(chX, chY) < maxD) {
 						if (s.amp < amp) {
 							s.relevant = false;			
@@ -107,5 +109,16 @@ struct CheckSpace {
 			}
 		}
 		return collision;
+	}
+
+	void purge() {
+		while (not entries.empty()) {			
+			Entry e = entries.front();
+			auto it = spikes[e.x][e.y].begin();
+			while (it != spikes[e.x][e.y].end()) {
+				it = spikes[e.x][e.y].erase(it);
+			}	
+			entries.pop();
+		}
 	}
 };

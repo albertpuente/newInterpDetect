@@ -27,7 +27,7 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     f_b = 32;                   //  Baseline increase factor <------------------------- PROVISIONAL
     movingWindowLength = 5;     // In frames    
     minVariability = 2*scale; // <----------------------------------------------------- PROVISIONAL
-    initialVariability = 3.12* scale; // <------------------------------------------ PROVISIONAL
+    initialVariability = 3.12* scale; // <--------------------------------------------- PROVISIONAL
     max_out_threshold = 4000;
     min_out_threshold = 10;
 
@@ -356,30 +356,49 @@ int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start
     return Qmin;
 }
 
-void InterpDetection::writeOutput(const vector<Spike>& spikes, unsigned short* vm) {
+void InterpDetection::writeOutput(const vector<Spike>& spikes, int* fiveChInterp, 
+                                  unsigned short* vm, int t0) {
+
     for (auto s : spikes) {
         int start = s.t - tau_pre;
-        int end = st + tau_post;
+        int end = s.t + tau_post;
         int ch = s.chX*chRows + s.chY;
-        output << s.t;
+
+        output << s.t + t0 << " " << ch;        
+        // Write 5-interp center
         for (int t = start; t <= end; ++t) {
-            output << " " << vm[ch + t*NChannels];
+            output << " " << fiveChInterp[ch + t*NChannels];
         } 
-        output << endl;        
+        output << endl;     
+
+        // Write 9 surrounding real channels
+        for (int i = s.chX - 1; i < s.chX + 2; i++) {
+			for (int j = s.chY - 1; j < s.chY + 2; j++) {	
+                ch = i*chRows + j;
+                output << "VM";
+                for (int t = start; t <= end; ++t) {
+                    output << " " << vm[ch + t*NChannels];
+                } 
+                output << endl;
+            }
+        }	 
     }
 }
 
-void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start, int t0, int tInc) {
+void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
+                                 int start, int t0, int tInc) {
+
     auto spikeDelay = new int[NChannels];
     fill_n(spikeDelay, NChannels, -1);
+    
+    auto currentMin = new int[NChannels];
 
     // spikeDelay indicates the number of frames since the spike:
     // -1 -> No recent spike
     //  0 -> Just updated
     //  X -> Number of frames since last spike (waiting for repolarisation)
 
-    for (int t = startDetectionFrame; t < tInc; t++) {
-        
+    for (int t = startDetectionFrame; t < tInc - tau_post; t++) {
         /* TO-DO
            Compatible with a parallelisation in an 4-step alternate sweep
            across chunks of channels. For example, if 4096 channels and 8x8
@@ -394,6 +413,8 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
            per step vs number of putative spike collisions to check. The size of 
            the chunks must be a least the tau_event characteristic event length so 
            that it is only necessary to check the surrounding chunks for collisions.
+
+           TO-CHECK: Overhead?
         */
                 
         for (int i = 1; i < chRows - 1; i++) {
@@ -407,13 +428,20 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
                     spikeDelay[ch] = -1;
                 }
                 // Detection threshold (spike)
-                else if (v < theta) {
-                    spikeDelay[ch] = 1;
+                else if (v < theta) { // Better spike in memory
+                    if (spikeDelay[ch] > 0 and not (v < currentMin[ch])) {
+                        spikeDelay[ch] += 1;
+                    }                    
+                    else { // New best spike
+                        spikeDelay[ch] = 1;
+                        currentMin[ch] = v;
+                    }
                 }
                 // Repolarisation threshold (with previous spike)
                 else if (v > theta_b and spikeDelay[ch] != -1) {
                     bool relevant = not registry.collides(v, i, j);
-                    int amplitude = fiveChInterp[ch + (t-spikeDelay[ch])*NChannels];
+                    int peakTime = t-spikeDelay[ch];
+                    int amplitude = fiveChInterp[ch + peakTime*NChannels];
                     
                     // Sanity check
                     if (v < - 10e7 or v > 10e7) {
@@ -422,7 +450,7 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
                     }
                     //
 
-                    registry.addSpike(amplitude, t, i, j, relevant);
+                    registry.addSpike(amplitude, peakTime, i, j, relevant);
                     spikeDelay[ch] = -1;
                 }
                 // Regular case
@@ -440,12 +468,11 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
         auto spikesToOutput = registry.pruneOldSpikes(t, fourChInterp, fiveChInterp);
         nSpikes += spikesToOutput.size();
 
-        writeOutput(spikesToOutput, vm);
-        delete[] spikesToOutput;
+        writeOutput(spikesToOutput, fiveChInterp, vm, t0);        
     }
 
     delete[] spikeDelay;
-
+    delete[] currentMin;
 }
 
 void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {    
@@ -462,6 +489,7 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     auto vGlobal = computeMedian(vm, tInc);    
     if (not detectionInitialised) { // First detection
         cout << "Initialising variables..." << endl;
+        output.open("spikes.txt");
         initialiseVMovingAvg(vm, vGlobal);
         initialiseVGlobalMovingAvg(vGlobal);
         registry.initialise(tau_event, tau_coinc, chRows, chCols, chunkSize);
@@ -482,15 +510,17 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     auto fiveChInterp = computeFiveChInterp(Qmin, startFrame, tInc);
 
     cout << "Finding spikes..." << endl;
-    findSpikes(fourChInterp, fiveChInterp, startFrame, t0, tInc);    
+    findSpikes(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
 
-    cout << nSpikes << " spikes." << endl;
+    // cout << nSpikes << " spikes." << endl;
 
     // Free memory between iterations
     delete[] vGlobal;
     delete[] Qmin;
     delete[] fourChInterp;
-    delete[] fiveChInterp;    
+    delete[] fiveChInterp;
+
+    registry.purge();
 }
 
 } // End of namespace SpkDslowFilter

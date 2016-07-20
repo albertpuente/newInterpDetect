@@ -8,7 +8,8 @@
 #include <climits>
 #include <thread>
 
-#include <stdlib.h> // DEBUG
+#include <stdlib.h> // DEBUG EXIT
+
 using namespace std;
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -18,30 +19,48 @@ class InterpDetection {
 
 public:
 	InterpDetection(int cols, int rows, double samplingRate);
+
 	~InterpDetection();
+
 	void detect(unsigned short* vm, int t0, int t1, int tCut);
 
 private:
 	int interpolateFourChannels(int* V, int t, int ch);
+
 	int* computeFourChInterp(int* V, int start, int tInc);
+
 	int interpolateFiveChannels(int* V, int t, int ch);
+
 	int* computeFiveChInterp(int* V, int start, int tInc);
+
 	inline bool isOutlier(unsigned short v);
+
 	int* computeMedian(unsigned short* vm, int tInc);
+
 	inline void updateBaseline(int v, int ch);
+
 	void initialiseVMovingAvg(unsigned short* vm, int* vGlobal);
+
 	void initialiseVGlobalMovingAvg(int* vGlobal);	
+
 	int* preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc);
-	void writeOutput(const vector<Spike>& spikes, unsigned short* vm);
-	void findSpikes(int* fourChInterp, int* fiveChInterp, int start, int t0, int tInc);
+
+	void writeOutput(const vector<Spike>& spikes, int* fiveChInterp, 
+			unsigned short* vm, int t0);
+
+	void findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
+			int start, int t0, int tInc);
 
 	// Parallel functions
 	void computeFourChInterpThread(int threadID, int* fourChInterp, int* V, 
 		    int start, int tInc);
+
 	void computeFiveChInterpThread(int threadID, int* fiveChInterp, int* V, 
 			int start, int tInc);
+
 	void preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
 			int start, int tInc, int* Qdiff, int* Qmin, int* vGlobalMovingAvg);
+
 
 	bool detectionInitialised;
 	
