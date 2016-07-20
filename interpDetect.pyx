@@ -20,8 +20,6 @@ def interpDetect(filePath):
     rf = openHDF5file(filePath)
     nFrames, samplingRate, nRecCh, chIndices = getHDF5params(rf)
 
-    # nFrames = 2000 # <------------------------------------------------------------- DELETE
-
     # Duration of the recording in seconds
     nSec = nFrames / samplingRate
     

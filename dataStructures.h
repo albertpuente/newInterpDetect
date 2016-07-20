@@ -97,7 +97,7 @@ struct CheckSpace {
 				for (Spike & s : spikes[i][j]) {
 					if (s.distance(chX, chY) < maxD) {
 						if (s.amp < amp) {
-							s.relevant = false;								
+							s.relevant = false;			
 						}
 						else {
 							collision = true;

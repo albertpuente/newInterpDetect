@@ -22,9 +22,9 @@ public:
 	void detect(unsigned short* vm, int t0, int t1, int tCut);
 
 private:
-	inline int interpolateFourChannels(int* V, int ch);
+	int interpolateFourChannels(int* V, int t, int ch);
 	int* computeFourChInterp(int* V, int start, int tInc);
-	inline int interpolateFiveChannels(int* V, int ch);
+	int interpolateFiveChannels(int* V, int t, int ch);
 	int* computeFiveChInterp(int* V, int start, int tInc);
 	inline bool isOutlier(unsigned short v);
 	int* computeMedian(unsigned short* vm, int tInc);
@@ -32,6 +32,7 @@ private:
 	void initialiseVMovingAvg(unsigned short* vm, int* vGlobal);
 	void initialiseVGlobalMovingAvg(int* vGlobal);	
 	int* preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc);
+	void writeOutput(const vector<Spike>& spikes, unsigned short* vm);
 	void findSpikes(int* fourChInterp, int* fiveChInterp, int start, int t0, int tInc);
 
 	// Parallel functions
@@ -40,7 +41,7 @@ private:
 	void computeFiveChInterpThread(int threadID, int* fiveChInterp, int* V, 
 			int start, int tInc);
 	void preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
-			int start, int tInc, int* Qdiff, int* Qmax, int* vGlobalMovingAvg);
+			int start, int tInc, int* Qdiff, int* Qmin, int* vGlobalMovingAvg);
 
 	bool detectionInitialised;
 	
@@ -62,9 +63,8 @@ private:
 	unsigned short scale; // Scale all data to increase the resolution
 
 	int nSpikes;
-
+	int startDetectionFrame;
 	// Algorithm parameters
-	int initialBaseline;	
 	int initialVariability;
 	int minVariability;
 	unsigned short d_pitch; // Electrode pitch [microV]
@@ -78,13 +78,15 @@ private:
 	int tau_event; // Characteristic event length
 	int tau_coinc; // Window for coincident events
 	int w_cs; // Center/surround weighting (5-channel interpolation) 
-	float tau_pre; // Cut-out window before peak
-	float tau_post; // Cut-out window after peak
+	int tau_pre; // Cut-out window before peak
+	int tau_post; // Cut-out window after peak
 
 	unsigned short max_out_threshold; // Outlier threshold (max)
 	unsigned short min_out_threshold; // 
 
-	int DEBUG_CH = 2310;
+	int DEBUG_CH = 280;
+
+	ofstream output;
 
 	int nthreads;
 	std::thread* threads;
