@@ -1,0 +1,58 @@
+
+Original structure
+
+Iterate
+  compute Aglobal
+  compute AglobalSmth
+  init vSmth 
+
+  Loop t
+    update vSmth
+    update QmPre = (vSmth - AglobalSmth)
+    if recalibrationTrigger
+      print to wInfo
+      update FVsbias, Vsqbias, SqIglobal
+    elif %sampling == 0
+      print to wInfo
+    
+    Loop channels
+      if vm outlier set A[ch] and Qdiff = 0
+      elif not A[ch]
+        compute Qdiff
+        update FVbias
+        update baseline in Qd and QmPre with Qdiff
+      else (after outlier)
+        restore baselines
+        restore A
+
+      Qmax = max(Qmax, Qdiff) (uses *AmpScale)
+    
+    Loop channels
+      Compute 4-interpolations with Qmax
+      (only for all not outliers)
+      mark AHP4 repolarisation > AHPthr
+      if temporal max   accept after Slmax frames      
+        SPIKE!
+        print to wX (l1320)
+        two-cases depending on AHP4
+        for each 4 interp        
+          print to wShapesX
+      Compute 5-interpolation with Qmax
+        same criteria
+
+
+
+
+
+    
+
+
+
+
+      
+
+
+
+
+  
+

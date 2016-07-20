@@ -2,12 +2,13 @@
 #include <vector>
 #include <climits>
 #include <queue>
+#include <iostream>
 using namespace std;
 
 struct Spike {
 	int t;
 	int chX, chY;
-	unsigned short v;
+	int amp;
     bool relevant;
 	float distance(int chX2, int chY2) {
 		return sqrt(pow((float) chX - (float) chX2, 2) + 
@@ -43,8 +44,8 @@ struct CheckSpace {
 		}		
 	}
 
-	void addSpike(int t, int chX, int chY, bool status) {
-		Spike s = {t, chX, chY, status};
+	void addSpike(int amp, int t, int chX, int chY, bool status) {
+		Spike s = {t, chX, chY, amp, status};
 		int x = chX/chunkSize;
 		int y = chY/chunkSize;
 		spikes[x][y].push_back(s);
@@ -58,18 +59,25 @@ struct CheckSpace {
 			Entry e = entries.front();
 			auto it = spikes[e.x][e.y].begin();
 			while (it != spikes[e.x][e.y].end()) {
-				if ((*it).t < t - maxT)
+				if ((*it).t < t - maxT) {
                     // Print to file before deleting it
                     // TO-DO
+					Spike spk = *it;
+					if (spk.relevant) {
+						cout << "Spike exiting: ch="<<spk.chX<<","<<spk.chY<<" t=" << spk.t << " amp=" << spk.amp << endl; 
+					}
+					//
 					it = spikes[e.x][e.y].erase(it);
-				else 
+				}
+				else {
 					it++;
+				}
 			}			
 			entries.pop();
 		}
 	}
 
-	bool collides(int chX, int chY) {
+	bool collides(int amp, int chX, int chY) {
 		// This function checks if there has been a spike in the region. A maximum of 9 
 		// chunks will be checked (less when the channel is next to a boundary).		
 
@@ -86,9 +94,13 @@ struct CheckSpace {
 			for (int j = max(y - 1, 0); j < min(y + 1, ySize); j++) {				
 				// Check all Spikes in chunk
 				for (Spike & s : spikes[i][j]) {
-					if (s.distance(chX, chY) < maxD) { 
-                        collision = true;
-						s.relevant = False;
+					if (s.distance(chX, chY) < maxD) {
+						if (s.amp < amp) {
+							s.relevant = false;								
+						}
+						else {
+							collision = true;
+						}                    					
                     }
 				}
 			}

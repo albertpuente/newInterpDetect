@@ -1,8 +1,16 @@
 #include "dataStructures.h"
+#include <algorithm>
+#include <array>
+#include <fstream>
 #include <iostream>
+#include <vector>
 #include <numeric>
+#include <climits>
 
+#include <stdlib.h> // DEBUG
 using namespace std;
+
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 namespace SpkDslowFilter {
 class InterpDetection {	
@@ -10,19 +18,21 @@ class InterpDetection {
 public:
 	InterpDetection(int cols, int rows, double samplingRate);
 	~InterpDetection();
-	void detect(unsigned short* vm, long t0, long t1);
+	void detect(unsigned short* vm, int t0, int t1);
 
 private:
-	inline int interpolateFourChannels(unsigned short* vm, int ch);
-	int* computeFourChInterp(unsigned short* vm, int* vGlobal, long tInc);
-	inline int interpolateFiveChannels(unsigned short* vm, int ch);
-	int* computeFiveChInterp(unsigned short* vm, int* vGlobal, long tInc);
-	int* computeMedian(unsigned short* vm, long tInc);
+	inline int interpolateFourChannels(int* V, int ch);
+	int* computeFourChInterp(int* V, int start, int tInc);
+	inline int interpolateFiveChannels(int* V, int ch);
+	int* computeFiveChInterp(int* V, int start, int tInc);
 	inline bool isOutlier(unsigned short v);
-	void updateBaseline(int* fiveChInterp, int t);
-	void findSpike(int* fourChInterp, int* fiveChInterp, unsigned short* vm,
-				   int i, int j, int t);
-	
+	int* computeMedian(unsigned short* vm, int tInc);
+	inline void updateBaseline(int v, int ch);
+	void initialiseVMovingAvg(unsigned short* vm, int* vGlobal);
+	void initialiseVGlobalMovingAvg(int* vGlobal);
+	int* preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc);
+	void findSpikes(int* fourChInterp, int* fiveChInterp, int start, int tInc);
+
 	bool detectionInitialised;
 	
 	int chCols;
@@ -36,8 +46,10 @@ private:
 	int* baseline; 		// Size NChannels
 	int* variability; 	// Size: NChannels
 	int* vMovingAvg; // Size: NChannels
-	int medianMovingAvg;
-
+	int vGlobalMovingAvgInterIt;
+	int* outlierWait; // Size: NChannels
+	int outlierMark = INT_MIN;
+	int outlierWaitingTime = 10; // Frames
 	unsigned short scale; // Scale all data to increase the resolution
 
 	// Algorithm parameters
@@ -45,15 +57,15 @@ private:
 	int initialVariability;
 	int minVariability;
 	unsigned short d_pitch; // Electrode pitch [microV]
+	int maxSpikeDelay; // Interval for depolarisation area
 	double f_s; // Sampling rate
 	double f_v; // Variability update rate
 	double f_b; // Baseline update rate
 	float theta; // Detection threshold
 	float theta_b; // Repolarisation threshold
 	float theta_ev; // Minimum depolarisation area
-	float tau_ev; // Interval for depolarisation area
-	float tau_event; // Characteristic event length
-	float tau_coinc; // Window for coincident events
+	int tau_event; // Characteristic event length
+	int tau_coinc; // Window for coincident events
 	int w_cs; // Center/surround weighting (5-channel interpolation) 
 	float tau_pre; // Cut-out window before peak
 	float tau_post; // Cut-out window after peak
