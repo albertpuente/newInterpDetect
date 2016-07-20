@@ -3,53 +3,45 @@
 namespace SpkDslowFilter {
 
 InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
+
+    // Detection size
+
     chRows = rows;
     chCols = cols;
     NChannels = rows*cols;
 
-    scale = 64;
+    // Algorithm parameters
 
-	theta =  - 3.12 * scale; // Detection threshold
-    theta_b = 0; // Repolarisation threshold
-
-    w_cs = 4; // Center/surround weighting (5-channel interpolation) 
-
-	theta_ev; // Minimum depolarisation area
-	
-	tau_pre = 7; // (1 ms) Cut-out window before peak
-	tau_post = 15; // (2.2 ms) Cut-out window after peak
-
-    tau_coinc = 3; // (0.27 ms) Window for coincident events
-    tau_event = 8; // (1 ms) Characteristic event length	
+    scale = 64;                 // Increase resolution in detection
+	theta =  - 3.12 * scale;    // Detection threshold
+    theta_b = 0;                // Repolarisation threshold
+    w_cs = 4;                   // Center/surround weighting (5-channel interpolation)
+	// theta_ev;                // Minimum depolarisation area	
+    tau_pre = 7;                // (1 ms) Cut-out window before peak
+    tau_post = 15;              // (2.2 ms) Cut-out window after peak
+    tau_coinc = 3;              // (0.27 ms) Window for coincident events
+    tau_event = 8;              // (1 ms) Characteristic event length	
     f_s = samplingRate;
-
     maxSpikeDelay = f_s/1000;
-
-    f_v = 4; //  Variability increase factor <------------------------------------------- PROVISIONAL
-    f_b = 32; //  Baseline increase factor <--------------------------------------------- PROVISIONAL
-
-    movingWindowLength = 5; // In frames
-    
+    f_v = 4;                    //  Variability increase factor <---------------------- PROVISIONAL
+    f_b = 32;                   //  Baseline increase factor <------------------------- PROVISIONAL
+    movingWindowLength = 5;     // In frames    
     initialBaseline = 0;    
     minVariability = scale*0.5;
     initialVariability = minVariability; // <-------------------------------------------- PROVISIONAL
-
-    variability = new int[NChannels];
-    baseline = new int[NChannels];
-    fill_n(variability, NChannels, initialVariability);
-    fill_n(baseline, NChannels, initialBaseline);
-
     max_out_threshold = 4000;
     min_out_threshold = 10;
 
+    // Execution variables
+
+    variability = new int[NChannels];
+    fill_n(variability, NChannels, initialVariability);
+    baseline = new int[NChannels];    
+    fill_n(baseline, NChannels, initialBaseline);
     detectionInitialised = false;
-
     outlierWait = new int[NChannels];
-
     chunkSize = 8; // Default: 64 chunks (8x8 chunks of 8x8 channels each)
-
     nSpikes = 0;
-
     nthreads = 8; // <------------------------------------------------------------------- PROVISIONAL
     threads = new std::thread[nthreads];
 }
@@ -362,7 +354,22 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
 
     for (int t = 0; t < tInc; t++) {
         
-        // Parallelisable in an alternate sweep
+        /* TO-DO
+           Compatible with a parallelisation in an 4-step alternate sweep
+           across chunks of channels. For example, if 4096 channels and 8x8
+           chunks, it can be done in 4 steps with 16 simultaneous threads each.
+
+           X · X ·      · X · X     · · · ·      · · · ·
+           · · · ·      · · · ·     X · X ·      · X · X
+           X · X ·      · X · X     · · · ·      · · · ·
+           · · · ·      · · · ·     X · X ·      · X · X
+
+           The size of the chunk determines a trade-off between number of chunks
+           per step vs number of putative spike collisions to check. The size of 
+           the chunks must be a least the tau_event characteristic event length so 
+           that it is only necessary to check the surrounding chunks for collisions.
+        */
+        
         for (int i = 1; i < chRows - 1; i++) {
             for (int j = 1; j < chCols - 1; j++) {
                 // For each channel
