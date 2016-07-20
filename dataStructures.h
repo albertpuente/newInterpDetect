@@ -12,7 +12,7 @@ struct Spike {
     bool relevant;
 	float distance(int chX2, int chY2) {
 		return sqrt(pow((float) chX - (float) chX2, 2) + 
-					pow((float) chY - (float) chX2, 2)   );
+					pow((float) chY - (float) chY2, 2)   );
 	}
 };
 
@@ -54,7 +54,8 @@ struct CheckSpace {
 		entries.push(e);
 	}
 
-	void pruneOldSpikes(int t) {
+	vector<Spike> pruneOldSpikes(int t, int* fourChInterp, int* fiveChInterp) {
+		auto spikesToPrint = vector<Spike>();
 		while (not entries.empty() && entries.front().t < t - maxT) {			
 			Entry e = entries.front();
 			auto it = spikes[e.x][e.y].begin();
@@ -64,9 +65,8 @@ struct CheckSpace {
                     // TO-DO
 					Spike spk = *it;
 					if (spk.relevant) {
-						cout << "Spike exiting: ch="<<spk.chX<<","<<spk.chY<<" t=" << spk.t << " amp=" << spk.amp << endl; 
+						spikesToPrint.push_back(spk);
 					}
-					//
 					it = spikes[e.x][e.y].erase(it);
 				}
 				else {
@@ -75,6 +75,7 @@ struct CheckSpace {
 			}			
 			entries.pop();
 		}
+		return spikesToPrint;
 	}
 
 	bool collides(int amp, int chX, int chY) {

@@ -12,7 +12,7 @@ from readUtils import openHDF5file, getHDF5params, readHDF5
 cdef extern from "SpkDslowFilter.h" namespace "SpkDslowFilter":
     cdef cppclass InterpDetection:
         InterpDetection(int rows, int cols, double samplingRate) except +
-        void detect(unsigned short* vm, int t0, int t1)
+        void detect(unsigned short* vm, int t0, int t1, int tCut)
 
 def interpDetect(filePath):
 
@@ -20,7 +20,7 @@ def interpDetect(filePath):
     rf = openHDF5file(filePath)
     nFrames, samplingRate, nRecCh, chIndices = getHDF5params(rf)
 
-    nFrames = 2000 # <------------------------------------------------------------- DELETE
+    # nFrames = 2000 # <------------------------------------------------------------- DELETE
 
     # Duration of the recording in seconds
     nSec = nFrames / samplingRate
@@ -39,5 +39,5 @@ def interpDetect(filePath):
         t1 = min(t0 + tInc, nFrames)
         print 'Detecting frames:', t0, 'to', t1, '...'
         vm = readHDF5(rf, t0, t1) 
-        SpkD.detect(&vm[0], t0, t1)
+        SpkD.detect(&vm[0], t0, t1, tCut)
     

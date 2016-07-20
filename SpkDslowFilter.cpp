@@ -19,20 +19,20 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
 	tau_pre = 7; // (1 ms) Cut-out window before peak
 	tau_post = 15; // (2.2 ms) Cut-out window after peak
 
-    tau_coinc = 2; // (0.27 ms) Window for coincident events
-    tau_event = 7; // (1 ms) Characteristic event length	
+    tau_coinc = 3; // (0.27 ms) Window for coincident events
+    tau_event = 8; // (1 ms) Characteristic event length	
     f_s = samplingRate;
 
     maxSpikeDelay = f_s/1000;
 
-    f_v = 4; // ??? 
-    f_b = 32; // ??? 
+    f_v = 4; //  Variability increase factor <------------------------------------------- PROVISIONAL
+    f_b = 32; //  Baseline increase factor <--------------------------------------------- PROVISIONAL
 
     movingWindowLength = 5; // In frames
     
     initialBaseline = 0;    
     minVariability = scale*0.5;
-    initialVariability = minVariability; // ??? Provisional
+    initialVariability = minVariability; // <-------------------------------------------- PROVISIONAL
 
     variability = new int[NChannels];
     baseline = new int[NChannels];
@@ -47,6 +47,11 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     outlierWait = new int[NChannels];
 
     chunkSize = 8; // Default: 64 chunks (8x8 chunks of 8x8 channels each)
+
+    nSpikes = 0;
+
+    nthreads = 8; // <------------------------------------------------------------------- PROVISIONAL
+    threads = new std::thread[nthreads];
 }
 
 inline int InterpDetection::interpolateFourChannels(int* V, int ch) {
@@ -75,9 +80,14 @@ inline int InterpDetection::interpolateFourChannels(int* V, int ch) {
     }
 }
 
-int* InterpDetection::computeFourChInterp(int* V, int start, int tInc) {
-    auto fourChInterp = new int[NChannels*tInc]; 
-    for (int t = start; t < tInc; t++) { // Parallelisable
+void InterpDetection::computeFourChInterpThread(int threadID, int* fourChInterp, int* V, 
+                                                int start, int tInc) {
+
+    int chunkSize = std::ceil( (float) (tInc - start)/ (float) nthreads);   
+
+    // Loop accross all channels associated to this thread
+    for (int t = start + threadID*chunkSize; t < tInc and t < (threadID+1)*chunkSize; t++) { 
+
         // Not all elements in fourChInterp will be used (last column and row)
         for (int i = 0; i < chRows - 1; i++) {
             for (int j = 0; j < chCols - 1; j++) { 
@@ -85,7 +95,24 @@ int* InterpDetection::computeFourChInterp(int* V, int start, int tInc) {
                 fourChInterp[ch + t*NChannels] = interpolateFourChannels(V + t*NChannels, ch);
             } 
         }
+    }
+}
+
+int* InterpDetection::computeFourChInterp(int* V, int start, int tInc) {
+    auto fourChInterp = new int[NChannels*tInc]; 
+
+    // Call parallel preprocess and computation of Qmax and Qdiff
+    for (int threadID = 0; threadID < nthreads; threadID++) {
+        threads[threadID] = std::thread( [=] { 
+            computeFourChInterpThread(threadID, fourChInterp, V, start, tInc); 
+        });
+    }
+
+    // Wait for all threads
+    for (int threadID = 0; threadID < nthreads; threadID++) { 
+        threads[threadID].join();
     } 
+
     return fourChInterp;  
 }
 
@@ -119,17 +146,38 @@ inline int InterpDetection::interpolateFiveChannels(int* V, int ch) {
     }
 }
 
-int* InterpDetection::computeFiveChInterp(int* V, int start, int tInc) {
-    auto fiveChInterp = new int[NChannels*tInc]; // Has more elements than needed
-    for (int t = start; t < tInc; t++) { // Parallelisable
+void InterpDetection::computeFiveChInterpThread(int threadID, int* fiveChInterp, int* V, 
+                                                int start, int tInc) {
+
+    int chunkSize = std::ceil( (float) (tInc - start)/ (float) nthreads);   
+
+    // Loop accross all channels associated to this thread
+    for (int t = start + threadID*chunkSize; t < tInc and t < (threadID+1)*chunkSize; t++) { 
         // Not all elements in fiveChInterp will be used (first/last columns and rows)
         for (int i = 1; i < chRows - 1; i++) {
             for (int j = 1; j < chCols - 1; j++) {
                 int ch = i*chRows + j;                                
                 fiveChInterp[ch + t*NChannels] = interpolateFiveChannels(V + t*NChannels, ch);
             }
-        }        
+        }
     }
+}
+
+int* InterpDetection::computeFiveChInterp(int* V, int start, int tInc) {
+    auto fiveChInterp = new int[NChannels*tInc]; // Has more elements than needed
+    
+    // Call parallel preprocess and computation of Qmax and Qdiff
+    for (int threadID = 0; threadID < nthreads; threadID++) {
+        threads[threadID] = std::thread( [=] { 
+            computeFiveChInterpThread(threadID, fiveChInterp, V, start, tInc); 
+        });
+    }
+
+    // Wait for all threads
+    for (int threadID = 0; threadID < nthreads; threadID++) { 
+        threads[threadID].join();
+    } 
+
     return fiveChInterp;  
 }
 
@@ -165,13 +213,13 @@ inline void InterpDetection::updateBaseline(int v, int ch) {
 
     // Variability
     // v in (baseline - variability, baseline] or (-inf, baseline - 6variability])
-    if ((v > baseline[ch] - variability[ch] && v <= baseline[ch]) ||
-        (v > INT_MIN && v < baseline[ch] - 6*variability[ch]) ) {
+    if ((v > baseline[ch] - variability[ch] and v <= baseline[ch]) ||
+        (v > INT_MIN and v < baseline[ch] - 6*variability[ch]) ) {
 
         variability[ch] -= f_v;
         variability[ch] = max(variability[ch], minVariability);
     } // v in (baseline - 5variability)
-    else if (v > baseline[ch] - 5 *variability[ch] && 
+    else if (v > baseline[ch] - 5 *variability[ch] and 
                 v <=  baseline[ch] - variability[ch]) {
         variability[ch] += f_v;
     }
@@ -198,8 +246,7 @@ void InterpDetection::initialiseVMovingAvg(unsigned short* vm, int* vGlobal) {
 void InterpDetection::initialiseVGlobalMovingAvg(int* vGlobal) {
     vGlobalMovingAvgInterIt = 0;
     for (int t = 0; t < movingWindowLength; ++t) {
-        vGlobalMovingAvgInterIt += vGlobal[t]/movingWindowLength;
-        
+        vGlobalMovingAvgInterIt += vGlobal[t]/movingWindowLength;        
     }
 }
 
@@ -212,20 +259,14 @@ int* InterpDetection::computeMedianDerivative(int* vGlobal, int tInc) {
 }
 */
 
-int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc) {
-    auto Qdiff = new int[NChannels*tInc];
-    auto Qmax = new int[NChannels*tInc];
-    auto vGlobalMovingAvg = new int[tInc];
-    vGlobalMovingAvg[start - 1] = vGlobalMovingAvgInterIt;
-    // Compute global moving average
-    for (int t = start; t < tInc; t++) {
-        vGlobalMovingAvg[t] = vGlobalMovingAvg[t - 1] + 
-            (vGlobal[t] - vGlobal[t - movingWindowLength])/movingWindowLength;
-    }
- 
-    for (int ch = 0; ch < NChannels; ch++) { // Independent across channels
+void InterpDetection::preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
+                        int start, int tInc, int* Qdiff, int* Qmax, int* vGlobalMovingAvg) {
 
-        for (int t = start; t < tInc; t++) {
+    for (int t = start; t < tInc; t++) {
+        // Number of channels associated to a thread
+        int chunkSize = std::ceil( (float) NChannels/ (float) nthreads);        
+        // Loop accross all channels associated to this thread
+        for (int ch = threadID*chunkSize; ch < NChannels and ch < (threadID+1)*chunkSize; ch++) { 
             int QdiffValue;
               
             auto v = vm[ch + t*NChannels];
@@ -264,6 +305,8 @@ int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start
             }
             // Normalised by the variability estimate
             Qdiff[ch + t*NChannels] = QdiffValue / variability[ch]; 
+
+            // Select maximum of consecutive frames
             if (t == start) {
                 Qmax[ch + t*NChannels] = Qdiff[ch + t*NChannels];
             }
@@ -272,6 +315,31 @@ int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start
             }
         }
     }
+}
+
+int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc) {
+    auto Qdiff = new int[NChannels*tInc];
+    auto Qmax = new int[NChannels*tInc];
+    auto vGlobalMovingAvg = new int[tInc];
+    vGlobalMovingAvg[start - 1] = vGlobalMovingAvgInterIt;
+    // Compute global moving average
+    for (int t = start; t < tInc; t++) {
+        vGlobalMovingAvg[t] = vGlobalMovingAvg[t - 1] + 
+            (vGlobal[t] - vGlobal[t - movingWindowLength])/movingWindowLength;
+    }
+
+    // Call parallel preprocess and computation of Qmax and Qdiff
+    for (int threadID = 0; threadID < nthreads; threadID++) {
+        threads[threadID] = std::thread( [=] { 
+            preprocessDataThread(threadID, vm, vGlobal, start, 
+                                 tInc, Qdiff, Qmax, vGlobalMovingAvg); 
+        });
+    }
+
+    // Wait for all threads
+    for (int threadID = 0; threadID < nthreads; threadID++) { 
+        threads[threadID].join();
+    }    
 
     // Prepare putative next iteration
     vGlobalMovingAvgInterIt = vGlobalMovingAvg[tInc - 1];
@@ -283,11 +351,11 @@ int* InterpDetection::preprocessData(unsigned short* vm, int* vGlobal, int start
     return Qmax;
 }
 
-void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start, int tInc) {
+void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start, int t0, int tInc) {
     auto spikeDelay = new int[NChannels];
     fill_n(spikeDelay, NChannels, -1);
 
-    // Spike delay indicates the number of frames since the spike:
+    // spikeDelay indicates the number of frames since the spike:
     // -1 -> No recent spike
     //  0 -> Just updated
     //  X -> Number of frames since last spike (waiting for repolarisation)
@@ -295,29 +363,38 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
     for (int t = 0; t < tInc; t++) {
         
         // Parallelisable in an alternate sweep
-        
         for (int i = 1; i < chRows - 1; i++) {
             for (int j = 1; j < chCols - 1; j++) {
                 // For each channel
                 int ch = i*chRows + j;
-                auto v = fiveChInterp[ch + t*NChannels];
+                auto v = - fiveChInterp[ch + t*NChannels];
+                // Outlier filter
+                if (v < - 10e7 || v > 10e7) {
+                    spikeDelay[ch] = -1;
+                }
                 // Detection threshold (spike)
-                cout << "v:" << v << "\ttheta:"<< theta << "\ttheta_b:" << theta_b << endl;
-                if (v < theta) {
+                else if (v < theta) {
                     spikeDelay[ch] = 1;
                 }
                 // Repolarisation threshold (with previous spike)
-                else if (v > theta_b && spikeDelay[ch] != -1) {
+                else if (v > theta_b and spikeDelay[ch] != -1) {
                     bool collides = registry.collides(v, i, j);
                     int amplitude = fiveChInterp[ch + (t-spikeDelay[ch])*NChannels];
+
+                    // Sanity check
+                    if (v < - 10e7 || v > 10e7) {
+                        cout << "ERROR!: Outlier is going to be used as a valid value!" << endl;
+                        exit(1);
+                    }
+                    //
+
                     registry.addSpike(amplitude, t, i, j, collides);
                     spikeDelay[ch] = -1;
                 }
                 // Regular case
                 else {
                     if (spikeDelay[ch] > 0) {
-                        spikeDelay[ch] += 1;
-                        if (spikeDelay[ch] > maxSpikeDelay) {
+                        if (++spikeDelay[ch] > maxSpikeDelay) {
                             spikeDelay[ch] = -1;
                         } 
                     }
@@ -325,15 +402,19 @@ void InterpDetection::findSpikes(int* fourChInterp, int* fiveChInterp, int start
             }
         }
 
-        // Print output
-        registry.pruneOldSpikes(t);
+        // Print output (TO-DO: copy to thread to allow computations while printing)
+        auto spikesToOutput = registry.pruneOldSpikes(t, fourChInterp, fiveChInterp);
+        for (Spike s : spikesToOutput) {
+            //cout << "Spike: " << t0 + s.t << " " << s.amp << endl;
+        }
+        nSpikes += spikesToOutput.size();
     }
 
     delete[] spikeDelay;
 
 }
 
-void InterpDetection::detect(unsigned short* vm, int t0, int t1) {    
+void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {    
     // vm is indexed as follows:
     //     vm[channel + tInc*nChannels]
     // or
@@ -341,7 +422,7 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1) {
 
     // Duration of the interval
     int tInc = t1 - t0;
-    int startFrame = 0;
+    int startFrame;
 
     // Initialisation    
     auto vGlobal = computeMedian(vm, tInc);    
@@ -350,8 +431,11 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1) {
         initialiseVMovingAvg(vm, vGlobal);
         initialiseVGlobalMovingAvg(vGlobal);
         registry.initialise(tau_event, tau_coinc, chRows, chCols, chunkSize);
-        startFrame += movingWindowLength;
+        startFrame = movingWindowLength;
         detectionInitialised = true;
+    }
+    else {
+        startFrame = tCut;
     }
  
     // Compute baselines (with outlierMarks)
@@ -364,8 +448,9 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1) {
     auto fiveChInterp = computeFiveChInterp(Qmax, startFrame, tInc);
 
     cout << "Finding spikes..." << endl;
-    findSpikes(fourChInterp, fiveChInterp, startFrame, tInc);    
+    findSpikes(fourChInterp, fiveChInterp, startFrame, t0, tInc);    
 
+    cout << nSpikes << " spikes." << endl;
     // Free memory
     delete[] vGlobal;
     delete[] Qmax;

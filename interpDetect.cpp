@@ -1379,7 +1379,6 @@ static int __pyx_pf_5numpy_7ndarray___getbuffer__(PyArrayObject *__pyx_v_self, P
 static void __pyx_pf_5numpy_7ndarray_2__releasebuffer__(PyArrayObject *__pyx_v_self, Py_buffer *__pyx_v_info); /* proto */
 static PyObject *__pyx_int_0;
 static PyObject *__pyx_int_20;
-static PyObject *__pyx_int_2000;
 static PyObject *__pyx_tuple__2;
 static PyObject *__pyx_tuple__3;
 static PyObject *__pyx_tuple__4;
@@ -1390,7 +1389,7 @@ static PyObject *__pyx_tuple__8;
 static PyObject *__pyx_codeobj__9;
 
 /* "interpDetect.pyx":17
- *         void detect(unsigned short* vm, int t0, int t1)
+ *         void detect(unsigned short* vm, int t0, int t1, int tCut)
  * 
  * def interpDetect(filePath):             # <<<<<<<<<<<<<<
  * 
@@ -1449,6 +1448,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
   PyObject *__pyx_t_19 = NULL;
   Py_ssize_t __pyx_t_20;
   int __pyx_t_21;
+  int __pyx_t_22;
   __Pyx_RefNannySetupContext("interpDetect", 0);
   __pyx_pybuffer_vm.pybuffer.buf = NULL;
   __pyx_pybuffer_vm.refcount = 0;
@@ -1497,7 +1497,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  *     rf = openHDF5file(filePath)
  *     nFrames, samplingRate, nRecCh, chIndices = getHDF5params(rf)             # <<<<<<<<<<<<<<
  * 
- *     nFrames = 2000 # <------------------------------------------------------------- DELETE
+ *     # nFrames = 2000 # <------------------------------------------------------------- DELETE
  */
   __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_getHDF5params); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 21, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
@@ -1597,16 +1597,6 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
   __pyx_t_4 = 0;
   __pyx_v_chIndices = __pyx_t_5;
   __pyx_t_5 = 0;
-
-  /* "interpDetect.pyx":23
- *     nFrames, samplingRate, nRecCh, chIndices = getHDF5params(rf)
- * 
- *     nFrames = 2000 # <------------------------------------------------------------- DELETE             # <<<<<<<<<<<<<<
- * 
- *     # Duration of the recording in seconds
- */
-  __Pyx_INCREF(__pyx_int_2000);
-  __Pyx_DECREF_SET(__pyx_v_nFrames, __pyx_int_2000);
 
   /* "interpDetect.pyx":26
  * 
@@ -1827,7 +1817,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  *         t1 = min(t0 + tInc, nFrames)
  *         print 'Detecting frames:', t0, 'to', t1, '...'             # <<<<<<<<<<<<<<
  *         vm = readHDF5(rf, t0, t1)
- *         SpkD.detect(&vm[0], t0, t1)
+ *         SpkD.detect(&vm[0], t0, t1, tCut)
  */
     __pyx_t_1 = PyTuple_New(5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 40, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
@@ -1853,7 +1843,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  *         t1 = min(t0 + tInc, nFrames)
  *         print 'Detecting frames:', t0, 'to', t1, '...'
  *         vm = readHDF5(rf, t0, t1)             # <<<<<<<<<<<<<<
- *         SpkD.detect(&vm[0], t0, t1)
+ *         SpkD.detect(&vm[0], t0, t1, tCut)
  * 
  */
     __pyx_t_5 = __Pyx_GetModuleGlobalName(__pyx_n_s_readHDF5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 41, __pyx_L1_error)
@@ -1913,7 +1903,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
     /* "interpDetect.pyx":42
  *         print 'Detecting frames:', t0, 'to', t1, '...'
  *         vm = readHDF5(rf, t0, t1)
- *         SpkD.detect(&vm[0], t0, t1)             # <<<<<<<<<<<<<<
+ *         SpkD.detect(&vm[0], t0, t1, tCut)             # <<<<<<<<<<<<<<
  * 
  */
     __pyx_t_20 = 0;
@@ -1928,7 +1918,8 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
     }
     __pyx_t_16 = __Pyx_PyInt_As_int(__pyx_v_t0); if (unlikely((__pyx_t_16 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 42, __pyx_L1_error)
     __pyx_t_21 = __Pyx_PyInt_As_int(__pyx_v_t1); if (unlikely((__pyx_t_21 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 42, __pyx_L1_error)
-    __pyx_v_SpkD->detect((&(*__Pyx_BufPtrCContig1d(unsigned short *, __pyx_pybuffernd_vm.rcbuffer->pybuffer.buf, __pyx_t_20, __pyx_pybuffernd_vm.diminfo[0].strides))), __pyx_t_16, __pyx_t_21);
+    __pyx_t_22 = __Pyx_PyInt_As_int(__pyx_v_tCut); if (unlikely((__pyx_t_22 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 42, __pyx_L1_error)
+    __pyx_v_SpkD->detect((&(*__Pyx_BufPtrCContig1d(unsigned short *, __pyx_pybuffernd_vm.rcbuffer->pybuffer.buf, __pyx_t_20, __pyx_pybuffernd_vm.diminfo[0].strides))), __pyx_t_16, __pyx_t_21, __pyx_t_22);
 
     /* "interpDetect.pyx":38
  * 
@@ -1941,7 +1932,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "interpDetect.pyx":17
- *         void detect(unsigned short* vm, int t0, int t1)
+ *         void detect(unsigned short* vm, int t0, int t1, int tCut)
  * 
  * def interpDetect(filePath):             # <<<<<<<<<<<<<<
  * 
@@ -4257,7 +4248,7 @@ static int __Pyx_InitCachedConstants(void) {
   __Pyx_GIVEREF(__pyx_tuple__7);
 
   /* "interpDetect.pyx":17
- *         void detect(unsigned short* vm, int t0, int t1)
+ *         void detect(unsigned short* vm, int t0, int t1, int tCut)
  * 
  * def interpDetect(filePath):             # <<<<<<<<<<<<<<
  * 
@@ -4278,7 +4269,6 @@ static int __Pyx_InitGlobals(void) {
   if (__Pyx_InitStrings(__pyx_string_tab) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   __pyx_int_0 = PyInt_FromLong(0); if (unlikely(!__pyx_int_0)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_int_20 = PyInt_FromLong(20); if (unlikely(!__pyx_int_20)) __PYX_ERR(0, 1, __pyx_L1_error)
-  __pyx_int_2000 = PyInt_FromLong(2000); if (unlikely(!__pyx_int_2000)) __PYX_ERR(0, 1, __pyx_L1_error)
   return 0;
   __pyx_L1_error:;
   return -1;
@@ -4470,7 +4460,7 @@ PyMODINIT_FUNC PyInit_interpDetect(void)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
   /* "interpDetect.pyx":17
- *         void detect(unsigned short* vm, int t0, int t1)
+ *         void detect(unsigned short* vm, int t0, int t1, int tCut)
  * 
  * def interpDetect(filePath):             # <<<<<<<<<<<<<<
  * 

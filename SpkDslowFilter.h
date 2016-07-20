@@ -6,6 +6,7 @@
 #include <vector>
 #include <numeric>
 #include <climits>
+#include <thread>
 
 #include <stdlib.h> // DEBUG
 using namespace std;
@@ -18,7 +19,7 @@ class InterpDetection {
 public:
 	InterpDetection(int cols, int rows, double samplingRate);
 	~InterpDetection();
-	void detect(unsigned short* vm, int t0, int t1);
+	void detect(unsigned short* vm, int t0, int t1, int tCut);
 
 private:
 	inline int interpolateFourChannels(int* V, int ch);
@@ -29,9 +30,17 @@ private:
 	int* computeMedian(unsigned short* vm, int tInc);
 	inline void updateBaseline(int v, int ch);
 	void initialiseVMovingAvg(unsigned short* vm, int* vGlobal);
-	void initialiseVGlobalMovingAvg(int* vGlobal);
+	void initialiseVGlobalMovingAvg(int* vGlobal);	
 	int* preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc);
-	void findSpikes(int* fourChInterp, int* fiveChInterp, int start, int tInc);
+	void findSpikes(int* fourChInterp, int* fiveChInterp, int start, int t0, int tInc);
+
+	// Parallel functions
+	void computeFourChInterpThread(int threadID, int* fourChInterp, int* V, 
+		    int start, int tInc);
+	void computeFiveChInterpThread(int threadID, int* fiveChInterp, int* V, 
+			int start, int tInc);
+	void preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
+			int start, int tInc, int* Qdiff, int* Qmax, int* vGlobalMovingAvg);
 
 	bool detectionInitialised;
 	
@@ -51,6 +60,8 @@ private:
 	int outlierMark = INT_MIN;
 	int outlierWaitingTime = 10; // Frames
 	unsigned short scale; // Scale all data to increase the resolution
+
+	int nSpikes;
 
 	// Algorithm parameters
 	int initialBaseline;	
@@ -74,5 +85,8 @@ private:
 	unsigned short min_out_threshold; // 
 
 	int DEBUG_CH = 2310;
+
+	int nthreads;
+	std::thread* threads;
 };
 };
