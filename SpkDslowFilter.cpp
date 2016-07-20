@@ -458,7 +458,8 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     findSpikes(fourChInterp, fiveChInterp, startFrame, t0, tInc);    
 
     cout << nSpikes << " spikes." << endl;
-    // Free memory
+
+    // Free memory between iterations
     delete[] vGlobal;
     delete[] Qmax;
     delete[] fourChInterp;
