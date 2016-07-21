@@ -13,7 +13,7 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     // Algorithm parameters
 
     scale = 64;                 // Increase resolution in detection
-	theta =  -14*scale;         // Detection threshold (PROVISIONAL)
+    theta =  -14*scale;         // Detection threshold (PROVISIONAL)
     theta_b = 0;                // Repolarisation threshold
     w_cs = 4;                   // Center/surround weighting (5-channel interpolation)
 	// theta_ev;                // Minimum depolarisation area	
