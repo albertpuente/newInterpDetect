@@ -34,7 +34,7 @@ def interpDetect(filePath):
     
     # Start detection
     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
-    tInc = min(25000, nFrames)
+    tInc = min(100000, nFrames)
     tCut = 50
 
     # vm is indexed as follows:

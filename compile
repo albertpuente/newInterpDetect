@@ -1,0 +1,52 @@
+#!/bin/sh
+
+if [ ! $# -eq 2 ]
+  then
+    echo "Usage: ./compile SYCL_file.cpp interface.pyx"
+    exit 1    
+fi
+
+if [ ! -d "./temp_files/" ]; then
+  mkdir temp_files
+fi
+
+echo Executing compute++ ...
+$COMPUTECPP/bin/compute++ -std=c++11 -O3 -no-serial-memop -sycl -emit-llvm -I$COMPUTECPP/include -D_GLIBCXX_USE_CXX11_ABI=0 -o ./temp_files/$1.bc -c $1
+
+
+echo Generating setup.py ...
+# Should be equivalent to:
+# g++ -DBUILD_PLATFORM_SPIR -I$COMPUTECPP/include -I./temp_files -D_GLIBCXX_USE_CXX11_ABI=0 -include ./temp_files/$1.sycl -std=c++11 -pthread -o ./temp_files/$1.o -c $1
+# g++ -std=c++11 -pthread ./temp_files/$1.o -o out -rdynamic -L$COMPUTECPP/lib/ -lSYCL -lOpenCL
+cat >./setup.py <<EOL
+from Cython.Build import cythonize
+from setuptools import setup, Extension
+import numpy
+
+setup(
+    version='1.0',
+    author='Oliver Muthmann, Matthias H Hennig, Albert Puente Encinas',
+    license='GPL3',
+    description='Efficient spike detection for extracellular recordings.',
+    url='http://github.com/',
+    ext_modules=cythonize(Extension(
+           '${2%.*}',
+           sources=['$2', '$1'],
+           language='c++',
+           extra_compile_args=['-DBUILD_PLATFORM_SPIR',
+                               '-I$COMPUTECPP/include',
+                               '-I./temp_files',
+                               '-D_GLIBCXX_USE_CXX11_ABI=0',
+                               '-include', './temp_files/$1.sycl',
+                               '-std=c++11', 
+                               '-pthread'],
+           extra_link_args=['-rdynamic',                            
+                            '-L$AMDAPPSDKROOT/lib/x86_64/','-lOpenCL',
+                            '-L$COMPUTECPP/lib/', '-lSYCL']
+           )),
+    include_dirs=[numpy.get_include()], requires=['h5py']
+)
+EOL
+
+echo Building with cython ...
+CC=g++ python setup.py build_ext --inplace

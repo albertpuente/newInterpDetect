@@ -1,3 +1,8 @@
 *.so
 *.o
 *.txt
+*.pyc
+
+.vscode/*
+temp_files/*
+

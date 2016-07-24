@@ -1,3 +1,4 @@
+#include "SYCL/sycl.hpp"
 #include "dataStructures.h"
 #include <algorithm>
 #include <array>
@@ -32,6 +33,8 @@ private:
 	int interpolateFiveChannels(int* V, int t, int ch);
 
 	int* computeFiveChInterp(int* V, int start, int tInc);
+
+	int* computeFiveChInterpSYCL(int* V, int start, int tInc);
 
 	inline bool isOutlier(unsigned short v);
 

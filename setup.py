@@ -2,25 +2,26 @@ from Cython.Build import cythonize
 from setuptools import setup, Extension
 import numpy
 
-# Remove the "-Wstrict-prototypes" compiler option, which isn't valid for C++.
-import distutils.sysconfig
-cfg_vars = distutils.sysconfig.get_config_vars()
-for key, value in cfg_vars.items():
-    if type(value) == str:
-        cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
-
 setup(
-    version='0.1',
-    author='...',
-    license='...',
-    description='...', 
-    long_description='...',
-    url='...',
+    version='1.0',
+    author='Oliver Muthmann, Matthias H Hennig, Albert Puente Encinas',
+    license='GPL3',
+    description='Efficient spike detection for extracellular recordings.',
+    url='http://github.com/',
     ext_modules=cythonize(Extension(
-           "interpDetect",
-           sources=["interpDetect.pyx", "SpkDslowFilter.cpp"],
-           language="c++",
-           extra_compile_args=['-std=c++11', '-O3']
-    )),
-    include_dirs=[numpy.get_include()]
+           'interpDetect',
+           sources=['interpDetect.pyx', 'SpkDslowFilter.cpp'],
+           language='c++',
+           extra_compile_args=['-DBUILD_PLATFORM_SPIR',
+                               '-I/afs/inf.ed.ac.uk/user/s15/s1575609/ComputeCpp-16.05-Linux//include',
+                               '-I./temp_files',
+                               '-D_GLIBCXX_USE_CXX11_ABI=0',
+                               '-include', './temp_files/SpkDslowFilter.cpp.sycl',
+                               '-std=c++11', 
+                               '-pthread'],
+           extra_link_args=['-rdynamic',                            
+                            '-L/disk/scratch/apuente/drivers/AMDAPPSDK-3.0/lib/x86_64/','-lOpenCL',
+                            '-L/afs/inf.ed.ac.uk/user/s15/s1575609/ComputeCpp-16.05-Linux//lib/', '-lSYCL']
+           )),
+    include_dirs=[numpy.get_include()], requires=['h5py']
 )
