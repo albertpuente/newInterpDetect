@@ -46,9 +46,10 @@ def interpDetect(filePath):
     for t0 in range(0, nFrames - tCut, tInc - tCut):
         t1 = min(t0 + tInc, nFrames)
 
+        '''
         if os.name == 'posix': 
             displayProgress(t0, t1, nFrames)    
-
+        '''
         
         print '\nDetecting frames:', t0, 'to', t1, ':'
         vm = readHDF5(rf, t0, t1) 

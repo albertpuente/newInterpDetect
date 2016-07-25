@@ -46,7 +46,7 @@ private:
 
 	void initialiseVGlobalMovingAvg(int* vGlobal);	
 
-	int* preprocessData(unsigned short* vm, int* vGlobal, int start, int tInc);
+	void preprocessData(int* Qmin, unsigned short* vm, int* vGlobal, int start, int tInc);
 
 	void writeOutput(const vector<Spike>& spikes, int* fiveChInterp, 
 			unsigned short* vm, int t0);
@@ -73,19 +73,23 @@ private:
 
 	int movingWindowLength;
 
+	int* Qmin;
+
 	CheckSpace registry;
 	int chunkSize;
 	int* baseline; 		// Size NChannels
 	int* variability; 	// Size: NChannels
+	int* baselineInterIt;
+	int* variabilityInterIt;
 	int* vMovingAvg; // Size: NChannels
 	int vGlobalMovingAvgInterIt;
 	int* outlierWait; // Size: NChannels
-	int outlierMark = INT_MIN;
+	int outlierMark;
 	int outlierWaitingTime = 10; // Frames
 	unsigned short scale; // Scale all data to increase the resolution
-
-	int nSpikes;
 	int startDetectionFrame;
+	int nSpikes;
+	
 	// Algorithm parameters
 	int initialVariability;
 	int minVariability;

@@ -5,7 +5,7 @@ theta = []
 theta_b = []
 
 
-with open('spikes.txt', 'r') as f:
+with open('spikesSYCL.txt', 'r') as f:
     L = f.readlines()
     i = 0
     while i < len(L):
