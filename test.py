@@ -4,6 +4,6 @@
 from interpDetect import interpDetect
 
 rawpath = '/disk/scratch/apuente/data/'
-fileName = '10.brw'
+fileName = '30.brw'
 
 interpDetect(rawpath + fileName)

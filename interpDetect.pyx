@@ -34,7 +34,7 @@ def interpDetect(filePath):
     
     # Start detection
     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
-    tInc = min(10000, nFrames)
+    tInc = min(100000, nFrames)
     tCut = 50
 
     # vm is indexed as follows:
@@ -52,7 +52,6 @@ def interpDetect(filePath):
         print '\nDetecting frames:', t0, 'to', t1, ':'
         vm = readHDF5(rf, t0, t1) 
         SpkD.detect(&vm[0], t0, t1, tCut)
-        break
 
     print '\nDone.'
     

@@ -112,7 +112,7 @@ private:
 	int w_cs; // Center/surround weighting (5-channel interpolation) 
 	int tau_pre; // Cut-out window before peak
 	int tau_post; // Cut-out window after peak
-
+	
 	unsigned short max_out_threshold; // Outlier threshold (max)
 	unsigned short min_out_threshold; // 
 

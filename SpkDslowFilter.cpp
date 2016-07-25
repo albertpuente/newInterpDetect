@@ -157,17 +157,13 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
     // Fill with zeros
     fill_n(fiveChInterp, NChannels*tInc, 0); 
 
-    auto threadCheck = new int[tInc*256];
-    fill_n(threadCheck, tInc*256, 0); 
+    // auto threadCheck = new int[tInc*256];
+    // fill_n(threadCheck, tInc*256, 0); 
 
     try {  // SYCL Block
         using namespace cl::sycl;
-
-        // Choose the best available device 
-        default_selector selector;
-        
-        // Queue to enqueue command groups (std::queue type conflict?)
-        // cl::sycl::queue Q(selector);
+       
+        // Queue to enqueue command groups
         cl::sycl::queue Q([&](exception_list eL) {
             try {
                 for (auto &e : eL) 
@@ -177,8 +173,8 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
                 std::cout << " An exception has been thrown: " << e.what() << std::endl;
             }
         });
-        auto device = Q.get_device();
-        auto maxBlockSize = device.get_info<cl::sycl::info::device::max_work_group_size>();
+        //auto device = Q.get_device();
+        //auto maxBlockSize = device.get_info<cl::sycl::info::device::max_work_group_size>();
 
         // Data buffers
 
@@ -186,18 +182,13 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
         buffer<int, 1> NChannelsBuffer (&NChannels, range<1> (1));
         buffer<int, 1> chRowsBuffer (&chRows, range<1> (1));
         buffer<int, 1> chColsBuffer (&chCols, range<1> (1));
-        //buffer<int, 1> startBuffer (&start, range<1> (1));
-        //buffer<int, 1> tIncBuffer (&tInc, range<1> (1));
         buffer<int, 1> w_csBuffer (&w_cs, range<1> (1));
         buffer<int, 1> outlierMarkBuffer (&outlierMark, range<1> (1));
 
         // Arrays (with map allocator to avoid internal automatic allocations in runtime)
-
         buffer<int, 1> fiveChInterpBuffer(fiveChInterp, range<1> (NChannels*tInc));
 
         buffer<int, 1, map_allocator<int> > VBuffer(V, range<1> (NChannels*tInc));
-
-        buffer<int, 1> checkBuffer(threadCheck, range<1> (tInc*256));
 
         // Command group 
         Q.submit([&] (handler& cgh) {
@@ -211,15 +202,12 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
             auto NChannelsPtr = NChannelsBuffer.get_access< access::mode::read >(cgh);  
             auto chRowsPtr = chRowsBuffer.get_access< access::mode::read >(cgh); 
             auto chColsPtr = chColsBuffer.get_access< access::mode::read >(cgh);
-            //auto startPtr = startBuffer.get_access< access::mode::read >(cgh);
-            //auto tIncPtr = tIncBuffer.get_access< access::mode::read >(cgh);
             auto w_csPtr = w_csBuffer.get_access< access::mode::read >(cgh);
             auto outlierMarkPtr = outlierMarkBuffer.get_access< access::mode::read >(cgh);
             
             // Arrays
 
             auto fiveChInterpPtr = fiveChInterpBuffer.get_access< access::mode::read_write >(cgh);
-            auto checkPtr = checkBuffer.get_access< access::mode::read_write >(cgh);
             auto VPtr = VBuffer.get_access< access::mode::read >(cgh);           
 
             // Local accessor to manually copy VPtr
@@ -251,14 +239,6 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
                 // Prepare offsets (normal and local)
                 int chOffsets[16];
                 int chOffsetsL[16];                
-                /*
-                for (int j = by; j < by + 4; j++) {
-                    for (int i = bx; i < bx + 4; i++) {
-                        chOffsets[i + j*4] =  i + j*chCols;
-                        chOffsetsL[i + j*4] = 1 + i + (j + 1)*chColsL;
-                    }
-                }
-                */
 
                 for (int i = 0; i < 16; i++) {
                     chOffsets [i] = bx + by*chCols + i%4*chCols + i/4;
@@ -295,15 +275,11 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
                         interp += weightedValue;
                         maxValue = cl::sycl::max(maxValue, weightedValue);
                     }
-                    // fiveChInterpPtr[it.get_global(0) + i%4 + chCols*i/4 + t*NChannels] = 6;
-                    fiveChInterpPtr[chOffsets[i] + t*NChannels] = 7;
                     
-                    //(not outlier)*(interp-maxValue) +  outlier*outlierMarkPtr[0];
+                    fiveChInterpPtr[chOffsets[i] + t*NChannels] = 
+                        (not outlier)*(interp-maxValue) + outlier*outlierMarkPtr[0];
                     
-                }   
-
-                //fiveChInterpPtr[4*it.get_local(1) + 4*it.get_local(2)*16 + t*NChannels] = 7;
-                checkPtr[it.get_local(1) + it.get_local(2)*16 + t*256] += 1;
+                }
                               
                 // End of Kernel
             });
@@ -315,32 +291,6 @@ int* InterpDetection::computeFiveChInterpLocalSYCL(int* V, int start, int tInc) 
     } catch (cl::sycl::exception e) {
         std::cout << "SYCL exception caught: " << e.what();
     }      // End of SYCL Block
-
-    int i = 0;
-    for (int e = 0; e < 1024; e++) {
-        if (e%256 == 0) 
-            cout << endl;
-
-        cout << threadCheck[e] << " ";
-        i+= 1;
-        if (i%16 == 0) {
-            i = 0;
-            cout << endl;
-        }
-    }
-    for (int i = 0; i < 4096; ++i) {
-        if (i%64 == 0) 
-            cout << endl;
-        cout << fiveChInterp[i] << " ";
-    }
-    cout << endl << endl;
-
-    for (int i = 0; i < 4096; ++i) {
-        if (i%64 == 0) 
-            cout << endl;
-        cout << fiveChInterp[i + NChannels] << " ";
-    }
-    cout << endl;
 
     return fiveChInterp;
 }
@@ -866,8 +816,20 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     // Compute interpolations with the baselines (max over two consecutive frames)
     cout << "Computing interpolations..." << endl;
     auto fourChInterp = computeFourChInterp(Qmin, 0, tInc);
+
+    auto start = std::chrono::steady_clock::now();
+
+    // This function has three versions: 
+    //    computeFiveChInterp: parallel standard c++11
+    //    computeFiveChInterpSYCL: SYCL naive approach
+    //    computeFiveChInterpLocalSYCL: SYCL implementation with work-group memory
     auto fiveChInterp = computeFiveChInterpLocalSYCL(Qmin, 0, tInc);
 
+    auto end = std::chrono::steady_clock::now();
+    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      end - start).count();
+    std::cout << "5-interpolation time: " << time << std::endl;
+    
     cout << "Finding spikes..." << endl;
     findSpikes(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
 
