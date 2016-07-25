@@ -42,7 +42,7 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     nSpikes = 0;
     nthreads = 8; // <------------------------------------------------------------------- PROVISIONAL
     threads = new std::thread[nthreads];
-    startDetectionFrame = 300; // <------------------------------------------------------ PROVISIONAL
+    startDetectionFrame = 50; // Provisional, equal to tCut
 }
 
 inline int InterpDetection::interpolateFourChannels(int* V, int t, int ch) {
@@ -157,6 +157,7 @@ int* InterpDetection::computeFiveChInterpSYCL(int* V, int start, int tInc)  {
         buffer<int, 1> chRowsBuffer (&chRows, range<1> (1));
         buffer<int, 1> chColsBuffer (&chCols, range<1> (1));
         buffer<int, 1> startBuffer (&start, range<1> (1));
+        buffer<int, 1> tIncBuffer (&tInc, range<1> (1));
         buffer<int, 1> w_csBuffer (&start, range<1> (1));
         buffer<int, 1> outlierMarkBuffer (&start, range<1> (1));
 
@@ -174,49 +175,57 @@ int* InterpDetection::computeFiveChInterpSYCL(int* V, int start, int tInc)  {
             auto chRowsPtr = chRowsBuffer.get_access< access::mode::read >(cgh); 
             auto chColsPtr = chColsBuffer.get_access< access::mode::read >(cgh);
             auto startPtr = startBuffer.get_access< access::mode::read >(cgh);
+            auto tIncPtr = tIncBuffer.get_access< access::mode::read >(cgh);
             auto w_csPtr = w_csBuffer.get_access< access::mode::read >(cgh);
             auto outlierMarkPtr = outlierMarkBuffer.get_access< access::mode::read >(cgh);
             
             // Arrays
             auto VPtr = VBuffer.get_access< access::mode::read >(cgh);   
-            auto fiveChInterpPtr = fiveChInterpBuffer.get_access< access::mode::read_write >(cgh);
+            auto fiveChInterpPtr = fiveChInterpBuffer.get_access< access::mode::write >(cgh);
 
             // Work space definition: 1-dimensional: global range, work group range
-            auto workSpaceRange = nd_range<1>(range<1>(tInc - start), range<1>(64)); 
+            int workGroupRange = 256;
+            int globalRange = tInc - start;
+            globalRange += workGroupRange - globalRange%workGroupRange; // Make it multiple of the the workGroupRange
+            
+            auto workSpaceRange = nd_range<1>(range<1>(globalRange), range<1>(workGroupRange)); 
             
             auto interpKernel = ([=](nd_item<1> time) {
                 // Kernel                
-                
-                
+                                
                 // Scalar vars   
                 auto NChannels = NChannelsPtr[0];
                 auto chRows = chRowsPtr[0];
                 auto chCols = chColsPtr[0];
                 auto start = startPtr[0];
+                auto tInc = tIncPtr[0];
                 auto w_cs = w_csPtr[0];
                 auto outlierMark = outlierMarkPtr[0];
 
-                auto t = time.get_global() + start;
+                auto t = time.get_global()[0] + start;
+                
+                if (t < tInc) { // Only for kernels in range                    
+                
+                    for (int i = 1; i < chRows - 1; i++) {
+                        for (int j = 1; j < chCols - 1; j++) {
+                            int ch = i*chRows + j;
 
-                for (int i = 1; i < chRows - 1; i++) {
-                    for (int j = 1; j < chCols - 1; j++) {
-                        int ch = i*chRows + j;
+                            int values[] = {VPtr[ch - chCols + t*NChannels], 
+                                            VPtr[ch + 1 + t*NChannels], 
+                                            VPtr[ch + chCols + t*NChannels], 
+                                            VPtr[ch - 1 + t*NChannels]};
 
-                        int values[] = {VPtr[ch - chCols + t*NChannels], 
-                                        VPtr[ch + 1 + t*NChannels], 
-                                        VPtr[ch + chCols + t*NChannels], 
-                                        VPtr[ch - 1 + t*NChannels]};
-
-                        int interp = (VPtr[ch + t*NChannels]*w_cs)/(3 + w_cs);
-                        int maxValue = INT_MIN;
-                        bool outlier = false;
-                        for (auto v : values) { // Add all the values and find the minimum
-                            outlier = outlier || (v == outlierMark);     
-                            int weightedValue = v/(3 + w_cs);
-                            interp += weightedValue;
-                            maxValue = cl::sycl::max(maxValue, weightedValue);
+                            int interp = (VPtr[ch + t*NChannels]*w_cs)/(3 + w_cs);
+                            int maxValue = INT_MIN;
+                            bool outlier = false;
+                            for (auto v : values) { // Add all the values and find the minimum
+                                outlier = outlier || (v == outlierMark);     
+                                int weightedValue = v/(3 + w_cs);
+                                interp += weightedValue;
+                                maxValue = cl::sycl::max(maxValue, weightedValue);
+                            }
+                            fiveChInterpPtr[ch + t*NChannels] = (!outlier)*(interp-maxValue) + outlier*outlierMark;
                         }
-                        fiveChInterpPtr[ch + t*NChannels] = (!outlier)*(interp-maxValue) + outlier*outlierMark;
                     }
                 }
                 
@@ -581,7 +590,9 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     int startFrame;
 
     // Initialisation    
+    cout << "Computing median..." << endl;
     auto vGlobal = computeMedian(vm, tInc);    
+    
     if (not detectionInitialised) { // First detection
         cout << "Initialising variables..." << endl;
         output.open("spikes.txt");
@@ -602,7 +613,7 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     // Compute interpolations with the baselines (max over two consecutive frames)
     cout << "Computing interpolations..." << endl;
     auto fourChInterp = computeFourChInterp(Qmin, startFrame, tInc);
-    auto fiveChInterp = computeFiveChInterpSYCL(Qmin, startFrame, tInc);
+    auto fiveChInterp = computeFiveChInterp(Qmin, startFrame, tInc);
 
     cout << "Finding spikes..." << endl;
     findSpikes(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
