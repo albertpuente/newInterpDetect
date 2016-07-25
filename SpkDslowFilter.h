@@ -79,9 +79,12 @@ private:
 	int chunkSize;
 	int* baseline; 		// Size NChannels
 	int* variability; 	// Size: NChannels
-	int* baselineInterIt;
-	int* variabilityInterIt;
+	int* baselineInterIt; // Size: NChannels
+	int* variabilityInterIt; // Size: NChannels
+	int* vMovingAvgInterIt; // Size: NChannels
 	int* vMovingAvg; // Size: NChannels
+	int* spikeDelay; // Size: NChannels
+	int* currentMin; // Size: NChannels
 	int vGlobalMovingAvgInterIt;
 	int* outlierWait; // Size: NChannels
 	int outlierMark;

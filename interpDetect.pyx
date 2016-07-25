@@ -34,7 +34,7 @@ def interpDetect(filePath):
     
     # Start detection
     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
-    tInc = min(10000, nFrames)
+    tInc = min(25000, nFrames)
     tCut = 50
 
     # vm is indexed as follows:
@@ -46,10 +46,8 @@ def interpDetect(filePath):
     for t0 in range(0, nFrames - tCut, tInc - tCut):
         t1 = min(t0 + tInc, nFrames)
 
-        '''
         if os.name == 'posix': 
             displayProgress(t0, t1, nFrames)    
-        '''
         
         print '\nDetecting frames:', t0, 'to', t1, ':'
         vm = readHDF5(rf, t0, t1) 
@@ -62,6 +60,6 @@ def displayProgress(t0, t1, nFrames):
     os.system('clear')
     col = int(os.popen('stty size', 'r').read().split()[1])
     g = np.divide(t0*col, nFrames)
-    b = max(np.divide(t1*col, nFrames) - g, col - g)
+    b = min(np.divide(t1*col, nFrames) - g, col - g)
     k = col - g - b
     print bcolors.GREEN + '█'*g + bcolors.BLUE +  '█'*b+ bcolors.ENDC +  '█'*k + '\n'

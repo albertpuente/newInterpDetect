@@ -38,9 +38,19 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     fill_n(variability, NChannels, initialVariability);
     baseline = new int[NChannels];   
 
+    // spikeDelay indicates the number of frames since the spike:
+    // -1 -> No recent spike
+    //  0 -> Just updated
+    //  X -> Number of frames since last spike (waiting for repolarisation)
+    spikeDelay = new int[NChannels];
+    fill_n(spikeDelay, NChannels, -1);  
+
+    // currentMin stores the largest depolarisation (within a temporal window)
+    currentMin = new int[NChannels];
+
     baselineInterIt = new int[NChannels];
 	variabilityInterIt = new int[NChannels];
-
+    vMovingAvgInterIt = new int[NChannels];
     detectionInitialised = false;
     outlierWait = new int[NChannels];
     chunkSize = 8; // Default: 64 chunks (8x8 chunks of 8x8 channels each)
@@ -278,6 +288,7 @@ void InterpDetection::computeFiveChInterpThread(int threadID, int* fiveChInterp,
 
     // Loop accross all channels associated to this thread
     for (int t = start + threadID*chunkSize; t < tInc and t < (threadID+1)*chunkSize; t++) { 
+        
         // Not all elements in fiveChInterp will be used (first/last columns and rows)
         for (int i = 1; i < chRows - 1; i++) {
             for (int j = 1; j < chCols - 1; j++) {
@@ -351,7 +362,6 @@ inline void InterpDetection::updateBaseline(int v, int ch) {
                 v <=  baseline[ch] - variability[ch]) {
         variability[ch] += f_v;
     }
-
 }
 
 void InterpDetection::initialiseVMovingAvg(unsigned short* vm, int* vGlobal) {
@@ -429,14 +439,7 @@ void InterpDetection::preprocessDataThread(int threadID, unsigned short* vm, int
                 }                
 
                 // Compute baseline
-                updateBaseline(v, ch);
-
-                // Save the values of the baseline and variability for the next iteration 
-                // in the frame where detection will start (tInc - tau_post)
-                if (t == tInc - tau_post) {
-                    baselineInterIt[ch] = baseline[ch];
-                    variabilityInterIt[ch] = variability[ch];
-                }
+                updateBaseline(v, ch);               
                 
                 if (outlierWait[ch] > 0) {
                     outlierWait[ch] -= 1;
@@ -448,11 +451,7 @@ void InterpDetection::preprocessDataThread(int threadID, unsigned short* vm, int
                     
                 }
                 
-            }
-            // Normalised by the variability estimate
-            
-
-            
+            }          
 
             // Select maximum of consecutive frames
             if (t == start) {
@@ -467,6 +466,15 @@ void InterpDetection::preprocessDataThread(int threadID, unsigned short* vm, int
                 Qmin[ch + t*NChannels] = outlierMark;
                 cout << "WARNING: Outlier replaced in sanity check." << endl;
             }
+
+            // Save the values of the baseline and variability and vMovingAvg for the next iteration 
+            // in the frame where detection will start (tInc - tau_post)
+            if (t == tInc - tau_post - 1) {
+                baselineInterIt[ch] = baseline[ch];
+                variabilityInterIt[ch] = variability[ch];
+                vMovingAvgInterIt[ch] = vMovingAvg[ch];
+            }
+
         }
     }
 }
@@ -507,11 +515,11 @@ void InterpDetection::writeOutput(const vector<Spike>& spikes, int* fiveChInterp
                                   unsigned short* vm, int t0) {
 
     for (auto s : spikes) {
-        int start = s.t - tau_pre;
-        int end = s.t + tau_post;
+        int start = s.t - t0 - tau_pre;
+        int end = s.t - t0 + tau_post;
         int ch = s.chX*chRows + s.chY;
 
-        output << s.t + t0 << " " << ch;        
+        output << s.t << " " << ch;        
         // Write 5-interp center
         for (int t = start; t <= end; ++t) {
             output << " " << fiveChInterp[ch + t*NChannels];
@@ -535,17 +543,12 @@ void InterpDetection::writeOutput(const vector<Spike>& spikes, int* fiveChInterp
 void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
                                  int start, int t0, int tInc) {
 
-    auto spikeDelay = new int[NChannels];
-    fill_n(spikeDelay, NChannels, -1);
-    
-    auto currentMin = new int[NChannels];
+    // The fist detection must not start until the baseline settles
+    if (t0 < startDetectionFrame) {
+        start = startDetectionFrame;
+    }
 
-    // spikeDelay indicates the number of frames since the spike:
-    // -1 -> No recent spike
-    //  0 -> Just updated
-    //  X -> Number of frames since last spike (waiting for repolarisation)
-
-    for (int t = max(start, startDetectionFrame); t < tInc - tau_post; t++) {
+    for (int t = start; t < tInc - tau_post; t++) {
         /* TO-DO
            Compatible with a parallelisation in an 4-step alternate sweep
            across chunks of channels. For example, if 4096 channels and 8x8
@@ -606,7 +609,7 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
                             exit(1);
                         }
                         //
-                        registry.addSpike(amplitude, peakTime, i, j, relevant);
+                        registry.addSpike(amplitude, t0 + peakTime, i, j, relevant);
                     }
 
                     spikeDelay[ch] = -1;
@@ -623,7 +626,7 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
         }
 
         // Print output (TO-DO: copy to thread to allow computations while printing)
-        auto spikesToOutput = registry.pruneOldSpikes(t, fourChInterp, fiveChInterp);
+        auto spikesToOutput = registry.pruneOldSpikes(t0 + t, fourChInterp, fiveChInterp);
         nSpikes += spikesToOutput.size();
 
         writeOutput(spikesToOutput, fiveChInterp, vm, t0);  
@@ -631,9 +634,6 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
     }
 
     cout << nSpikes << " spikes written to file." << endl; 
-
-    delete[] spikeDelay;
-    delete[] currentMin;
 }
 
 void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {    
@@ -657,8 +657,8 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
         initialiseVGlobalMovingAvg(vGlobal);
         registry.initialise(tau_event, tau_coinc, chRows, chCols, chunkSize);
         Qmin = new int[tInc*NChannels];
-        startFrame = movingWindowLength;
-        detectionInitialised = true;
+        startFrame = movingWindowLength;     
+        detectionInitialised = true;   
     }
     else {
         startFrame = tCut - tau_post;
@@ -671,7 +671,7 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     // Compute interpolations with the baselines (max over two consecutive frames)
     cout << "Computing interpolations..." << endl;
     auto fourChInterp = computeFourChInterp(Qmin, 0, tInc);
-    auto fiveChInterp = computeFiveChInterpSYCL(Qmin, 0, tInc);
+    auto fiveChInterp = computeFiveChInterp(Qmin, 0, tInc);
 
     cout << "Finding spikes..." << endl;
     findSpikes(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
@@ -681,16 +681,17 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
          Qmin + (tInc - tau_post)*NChannels, // Source end
          Qmin);                              // Destination start
 
-    // Copy the baseline and variability for the last detected frame
+    // Copy the baseline, variability and vMovingAvg for the last detected frame
     copy(baselineInterIt, baselineInterIt + NChannels, baseline);
     copy(variabilityInterIt, variabilityInterIt + NChannels, variability);
+    copy(vMovingAvgInterIt, vMovingAvgInterIt + NChannels, vMovingAvg);
 
     // Free memory between iterations
     delete[] vGlobal;
     delete[] fourChInterp;
     delete[] fiveChInterp;
 
-    registry.purge();
+    // registry.purge(); // Erase the contents of the registry (breaks consistency between iterations)
 }
 
 } // End of namespace SpkDslowFilter
