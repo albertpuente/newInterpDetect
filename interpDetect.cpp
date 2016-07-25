@@ -7,6 +7,7 @@
             "SpkDslowFilter.h"
         ], 
         "extra_compile_args": [
+            "-O2", 
             "-DBUILD_PLATFORM_SPIR", 
             "-I/afs/inf.ed.ac.uk/user/s15/s1575609/ComputeCpp-16.05-Linux//include", 
             "-I./temp_files", 
@@ -1881,7 +1882,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  * 
  *     # Start detection
  *     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)             # <<<<<<<<<<<<<<
- *     tInc = min(25000, nFrames)
+ *     tInc = min(10000, nFrames)
  *     tCut = 50
  */
   __pyx_t_8 = __pyx_PyFloat_AsDouble(__pyx_v_samplingRate); if (unlikely((__pyx_t_8 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 36, __pyx_L1_error)
@@ -1896,13 +1897,13 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
   /* "interpDetect.pyx":37
  *     # Start detection
  *     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
- *     tInc = min(25000, nFrames)             # <<<<<<<<<<<<<<
+ *     tInc = min(10000, nFrames)             # <<<<<<<<<<<<<<
  *     tCut = 50
  * 
  */
   __Pyx_INCREF(__pyx_v_nFrames);
   __pyx_t_1 = __pyx_v_nFrames;
-  __pyx_t_10 = 0x61A8;
+  __pyx_t_10 = 0x2710;
   __pyx_t_4 = __Pyx_PyInt_From_long(__pyx_t_10); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 37, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, __pyx_t_4, Py_LT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 37, __pyx_L1_error)
@@ -1927,7 +1928,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
 
   /* "interpDetect.pyx":38
  *     cdef InterpDetection * SpkD = new InterpDetection(64, 64, samplingRate)
- *     tInc = min(25000, nFrames)
+ *     tInc = min(10000, nFrames)
  *     tCut = 50             # <<<<<<<<<<<<<<
  * 
  *     # vm is indexed as follows:
@@ -2076,7 +2077,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
     __pyx_t_1 = __pyx_t_5;
     __Pyx_INCREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-    __Pyx_XDECREF_SET(__pyx_v_t1, __pyx_t_1);
+    __pyx_v_t1 = __pyx_t_1;
     __pyx_t_1 = 0;
 
     /* "interpDetect.pyx":49
@@ -2177,7 +2178,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  *         print '\nDetecting frames:', t0, 'to', t1, ':'
  *         vm = readHDF5(rf, t0, t1)             # <<<<<<<<<<<<<<
  *         SpkD.detect(&vm[0], t0, t1, tCut)
- * 
+ *         break
  */
     __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_readHDF5); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 53, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
@@ -2237,7 +2238,7 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  *         print '\nDetecting frames:', t0, 'to', t1, ':'
  *         vm = readHDF5(rf, t0, t1)
  *         SpkD.detect(&vm[0], t0, t1, tCut)             # <<<<<<<<<<<<<<
- * 
+ *         break
  * 
  */
     __pyx_t_20 = 0;
@@ -2255,6 +2256,15 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
     __pyx_t_22 = __Pyx_PyInt_As_int(__pyx_v_tCut); if (unlikely((__pyx_t_22 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 54, __pyx_L1_error)
     __pyx_v_SpkD->detect((&(*__Pyx_BufPtrCContig1d(unsigned short *, __pyx_pybuffernd_vm.rcbuffer->pybuffer.buf, __pyx_t_20, __pyx_pybuffernd_vm.diminfo[0].strides))), __pyx_t_16, __pyx_t_21, __pyx_t_22);
 
+    /* "interpDetect.pyx":55
+ *         vm = readHDF5(rf, t0, t1)
+ *         SpkD.detect(&vm[0], t0, t1, tCut)
+ *         break             # <<<<<<<<<<<<<<
+ * 
+ *     print '\nDone.'
+ */
+    goto __pyx_L6_break;
+
     /* "interpDetect.pyx":46
  *     # Iterate
  * 
@@ -2263,10 +2273,11 @@ static PyObject *__pyx_pf_12interpDetect_interpDetect(CYTHON_UNUSED PyObject *__
  * 
  */
   }
+  __pyx_L6_break:;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "interpDetect.pyx":57
- * 
+ *         break
  * 
  *     print '\nDone.'             # <<<<<<<<<<<<<<
  * 

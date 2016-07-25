@@ -34,8 +34,6 @@ private:
 
 	int* computeFiveChInterp(int* V, int start, int tInc);
 
-	int* computeFiveChInterpSYCL(int* V, int start, int tInc);
-
 	inline bool isOutlier(unsigned short v);
 
 	int* computeMedian(unsigned short* vm, int tInc);
@@ -54,7 +52,7 @@ private:
 	void findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
 			int start, int t0, int tInc);
 
-	// Parallel functions
+	// C++11 multi-threaded functions
 	void computeFourChInterpThread(int threadID, int* fourChInterp, int* V, 
 		    int start, int tInc);
 
@@ -64,7 +62,12 @@ private:
 	void preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
 			int start, int tInc, int* Qdiff, int* Qmin, int* vGlobalMovingAvg);
 
+	// SYCL functions	
+	int* computeFiveChInterpSYCL(int* V, int start, int tInc);
 
+	int* computeFiveChInterpLocalSYCL(int* V, int start, int tInc);
+
+	// Variables
 	bool detectionInitialised;
 	
 	int chCols;
@@ -112,8 +115,6 @@ private:
 
 	unsigned short max_out_threshold; // Outlier threshold (max)
 	unsigned short min_out_threshold; // 
-
-	int DEBUG_CH = 280;
 
 	ofstream output;
 
