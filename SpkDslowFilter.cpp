@@ -809,10 +809,9 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
     
     cout << nSpikes << " spikes written to file." << endl; 
 
-    // delete[] threads;
 }
 
-// Old sequential version
+// Fastest version (sequential)
 void InterpDetection::findSpikesSeq(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
                                  int start, int t0, int tInc) {
 
