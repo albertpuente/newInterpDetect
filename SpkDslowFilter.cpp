@@ -2,10 +2,9 @@
 
 namespace SpkDslowFilter {
 
-InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
+InterpDetection::InterpDetection(int rows, int cols, double samplingRate, int nCores) {
 
-    // Detection size
-
+    // Detection size (it currently only works on squared configurations)
     chRows = rows;
     chCols = cols;
     NChannels = rows*cols;
@@ -20,14 +19,14 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     tau_pre = 7;                // (1 ms) Cut-out window before peak
     tau_post = 15;              // (2.2 ms) Cut-out window after peak
     tau_coinc = 3;              // (0.27 ms) Window for coincident events
-    tau_event = 8;              // (1 ms) Characteristic event length	
+    tau_event = 5;              // (1 ms) Characteristic event length	
     f_s = samplingRate;
     maxSpikeDelay = f_s/1000;
-    f_v = 4;                    //  Variability increase factor <---------------------- PROVISIONAL
-    f_b = 32;                   //  Baseline increase factor <------------------------- PROVISIONAL
+    f_v = 4;                    //  Variability increase factor 
+    f_b = 32;                   //  Baseline increase factor 
     movingWindowLength = 5;     // In frames    
-    minVariability = 2*scale; // <----------------------------------------------------- PROVISIONAL
-    initialVariability = 3.12* scale; // <--------------------------------------------- PROVISIONAL
+    minVariability = 2*scale; 
+    initialVariability = 3.12* scale; // (Change?)
     max_out_threshold = 4000;
     min_out_threshold = 1000;
 
@@ -55,10 +54,14 @@ InterpDetection::InterpDetection(int rows, int cols, double samplingRate) {
     outlierWait = new int[NChannels];
     chunkSize = 8; // Default: 64 chunks (8x8 chunks of 8x8 channels each)
     nSpikes = 0;
-    nthreads = 8; // <------------------------------------------------------------------- PROVISIONAL
+    nthreads = nCores;
     threads = new std::thread[nthreads];
 
+    nParFindThreads = 16;
+    parFindThreads = new thread[nParFindThreads];
+
     outlierMark = 100000000;
+
 }
 
 inline int InterpDetection::interpolateFourChannels(int* V, int t, int ch) {
@@ -685,6 +688,92 @@ void InterpDetection::writeOutput(const vector<Spike>& spikes, int* fiveChInterp
     }
 }
 
+void InterpDetection::findSpikesThread(int threadID, int t, int* fourChInterp, int* fiveChInterp, int t0) {
+    /* 
+    Compatible with a parallelisation in an 4-step alternate sweep
+    across chunks of channels. For example, if 4096 channels and 8x8
+    chunks, it can be done in 4 steps with 16 simultaneous threads each.
+
+    X · X ·      · X · X     · · · ·      · · · ·
+    · · · ·      · · · ·     X · X ·      · X · X
+    X · X ·      · X · X     · · · ·      · · · ·
+    · · · ·      · · · ·     X · X ·      · X · X
+
+    The size of the chunk determines a trade-off between number of chunks
+    per step vs number of putative spike collisions to check. The size of 
+    the chunks must be a least the tau_event characteristic event length so 
+    that it is only necessary to check the surrounding chunks for collisions.
+    */
+    //int chunk = chRows/registry.chunkSize; // 8 in the 64x64 conf.
+    int chunk = 8;
+
+    // threadID will be in (0, 15) for the 1st step, then (16, 31), etc. 
+    int it = threadID/16;
+    int zone = threadID%16;
+    int startI = 16*(zone%4) + 8*(it%2);
+    int startJ = 16*(zone/4) + 8*(it/2);
+
+    for (int i = max(startI, 1); i < min(startI + chunk, chCols - 1); i++) {
+        for (int j = max(startJ, 1); j < min(startJ + chunk, chRows - 1); j++) {
+            // For each channel
+            int ch = i*chRows + j;   
+
+            auto v = fiveChInterp[ch + t*NChannels];
+
+            // Outlier filter
+            if (v == outlierMark) {
+                spikeDelay[ch] = -1;
+            }
+            // Detection threshold (spike)
+            else if (v < theta) { // Better spike in memory
+                if (spikeDelay[ch] > 0 and not (v < currentMin[ch])) {
+                    spikeDelay[ch] += 1;
+                }                    
+                else { // New best spike
+                    spikeDelay[ch] = 1;
+                    currentMin[ch] = v;
+                }
+            }
+            // Repolarisation threshold (with previous spike)
+            else if (v > theta_b and spikeDelay[ch] != -1) {
+                bool relevant = not registry.collides(v, i, j);
+                int peakTime = t - spikeDelay[ch];
+                int amplitude = fiveChInterp[ch + peakTime*NChannels];
+                
+                // The following frames (until peak + tau_post) must be checked for outliers
+                bool outlier = false;
+                for (int f = t + 1; f < peakTime + tau_post and not outlier; ++f) {
+                    if (fiveChInterp[ch + f*NChannels] == outlierMark) {
+                        outlier = true;
+                    }
+                }
+
+                if (not outlier) {
+                    // Sanity check
+                    if (amplitude == outlierMark) {
+                        cout << "ERROR!: Outlier is going to be used as a valid value!" << endl;
+                        cout << v << " " << amplitude<< " " << peakTime << endl;
+                        exit(1);
+                    }
+                    //
+
+                    registry.addSpike(amplitude, t0 + peakTime, i, j, relevant);
+                }
+
+                spikeDelay[ch] = -1;
+            }
+            // Regular case
+            else {
+                if (spikeDelay[ch] > 0) {
+                    if (++spikeDelay[ch] > maxSpikeDelay) {
+                        spikeDelay[ch] = -1;
+                    } 
+                }
+            }           
+        }
+    }
+}
+
 void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
                                  int start, int t0, int tInc) {
 
@@ -693,25 +782,47 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
         start = startDetectionFrame;
     }
 
+    // 16 parallel regions at once, 64 in total of 8x8 channels each
+    // nParFindThreads = NChannels/(4* chRows/registry.chunkSize * chRows/registry.chunkSize);    
+
+    for (int t = start; t < tInc - tau_post; t++) {   
+        // Call parallel preprocess and computation of Qmin and Qdiff
+        for (int i = 0; i < 4; ++i) {
+            for (int threadID = 0; threadID < nParFindThreads; threadID++) {
+                parFindThreads[threadID] = thread( [=] { 
+                    findSpikesThread(threadID + i*nParFindThreads, t, fourChInterp, fiveChInterp, t0); 
+                });
+            }
+
+            // Wait for all threads
+            for (int threadID = 0; threadID < nParFindThreads; threadID++) { 
+                parFindThreads[threadID].join();
+            }
+            
+        }
+        // Print output
+        auto spikesToOutput = registry.pruneOldSpikes(t0 + t, fourChInterp, fiveChInterp);
+        nSpikes += spikesToOutput.size();
+        writeOutput(spikesToOutput, fiveChInterp, vm, t0);  
+             
+    }
+    
+    cout << nSpikes << " spikes written to file." << endl; 
+
+    // delete[] threads;
+}
+
+// Old sequential version
+void InterpDetection::findSpikesSeq(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
+                                 int start, int t0, int tInc) {
+
+    // The fist detection must not start until the baseline settles
+    if (t0 < startDetectionFrame) {
+        start = startDetectionFrame;
+    }
+
     for (int t = start; t < tInc - tau_post; t++) {
-        /* TO-DO
-           Compatible with a parallelisation in an 4-step alternate sweep
-           across chunks of channels. For example, if 4096 channels and 8x8
-           chunks, it can be done in 4 steps with 16 simultaneous threads each.
-
-           X · X ·      · X · X     · · · ·      · · · ·
-           · · · ·      · · · ·     X · X ·      · X · X
-           X · X ·      · X · X     · · · ·      · · · ·
-           · · · ·      · · · ·     X · X ·      · X · X
-
-           The size of the chunk determines a trade-off between number of chunks
-           per step vs number of putative spike collisions to check. The size of 
-           the chunks must be a least the tau_event characteristic event length so 
-           that it is only necessary to check the surrounding chunks for collisions.
-
-           TO-CHECK: Overhead?
-        */
-                
+     
         for (int i = 1; i < chRows - 1; i++) {
             for (int j = 1; j < chCols - 1; j++) {
                 // For each channel
@@ -781,7 +892,7 @@ void InterpDetection::findSpikes(unsigned short* vm, int* fourChInterp, int* fiv
     cout << nSpikes << " spikes written to file." << endl; 
 }
 
-void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {    
+void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut, bool SYCL) {    
     // vm is indexed as follows:
     //     vm[channel + tInc*nChannels]
     // or
@@ -797,7 +908,7 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     
     if (not detectionInitialised) { // First detection
         cout << "Initialising variables..." << endl;
-        output.open("spikesSYCL.txt");
+        output.open("spikes.txt");
         initialiseVMovingAvg(vm, vGlobal);
         initialiseVGlobalMovingAvg(vGlobal);
         registry.initialise(tau_event, tau_coinc, chRows, chCols, chunkSize);
@@ -817,21 +928,24 @@ void InterpDetection::detect(unsigned short* vm, int t0, int t1, int tCut) {
     cout << "Computing interpolations..." << endl;
     auto fourChInterp = computeFourChInterp(Qmin, 0, tInc);
 
-    auto start = std::chrono::steady_clock::now();
+    //auto start = std::chrono::steady_clock::now();
 
     // This function has three versions: 
     //    computeFiveChInterp: parallel standard c++11
     //    computeFiveChInterpSYCL: SYCL naive approach
     //    computeFiveChInterpLocalSYCL: SYCL implementation with work-group memory
-    auto fiveChInterp = computeFiveChInterpLocalSYCL(Qmin, 0, tInc);
+    int* fiveChInterp;
+    if (SYCL) 
+        fiveChInterp = computeFiveChInterpLocalSYCL(Qmin, 0, tInc);
+    else 
+        fiveChInterp = computeFiveChInterp(Qmin, 0, tInc);
 
-    auto end = std::chrono::steady_clock::now();
-    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      end - start).count();
-    std::cout << "5-interpolation time: " << time << std::endl;
+    //auto end = std::chrono::steady_clock::now();
+    //auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    //std::cout << "5-interpolation time: " << time << std::endl;
     
     cout << "Finding spikes..." << endl;
-    findSpikes(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
+    findSpikesSeq(vm, fourChInterp, fiveChInterp, startFrame, t0, tInc);    
 
     // Move contents of Qmin (prepare next iteration)
     copy(Qmin + (tInc - tCut)*NChannels,     // Source start

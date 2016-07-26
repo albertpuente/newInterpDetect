@@ -3,6 +3,7 @@
 #include <climits>
 #include <queue>
 #include <iostream>
+#include <mutex>
 using namespace std;
 
 struct Spike {
@@ -31,6 +32,8 @@ struct CheckSpace {
 	int maxD, maxT;
 	int chunkSize;
 
+	std::mutex global_enqueue;
+
 	void initialise(float d, int t, int xS, int yS, int chunkS) {
 		maxD = d;
 		maxT = t;
@@ -51,10 +54,15 @@ struct CheckSpace {
 		Spike s = {t, chX, chY, amp, status};
 		int x = chX/chunkSize;
 		int y = chY/chunkSize;
+		
 		spikes[x][y].push_back(s);
 		
 		Entry e = {t, x, y};
+
+		// This is the only possible concurrent access
+		global_enqueue.lock();
 		entries.push(e);
+		global_enqueue.unlock();
 	}
 
 	vector<Spike> pruneOldSpikes(int t, int* fourChInterp, int* fiveChInterp) {
@@ -99,7 +107,7 @@ struct CheckSpace {
 				for (Spike & s : spikes[i][j]) {					
 					if (s.distance(chX, chY) < maxD) {
 						if (s.amp < amp) {
-							s.relevant = false;			
+							s.relevant = false;		
 						}
 						else {
 							collision = true;

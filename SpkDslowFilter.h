@@ -19,11 +19,11 @@ namespace SpkDslowFilter {
 class InterpDetection {	
 
 public:
-	InterpDetection(int cols, int rows, double samplingRate);
+	InterpDetection(int cols, int rows, double samplingRate, int nCores);
 
 	~InterpDetection();
 
-	void detect(unsigned short* vm, int t0, int t1, int tCut);
+	void detect(unsigned short* vm, int t0, int t1, int tCut, bool SYCL);
 
 private:
 	int interpolateFourChannels(int* V, int t, int ch);
@@ -44,13 +44,17 @@ private:
 
 	void initialiseVGlobalMovingAvg(int* vGlobal);	
 
-	void preprocessData(int* Qmin, unsigned short* vm, int* vGlobal, int start, int tInc);
+	void preprocessData(int* Qmin, unsigned short* vm, int* vGlobal, 
+			int start, int tInc);
 
 	void writeOutput(const vector<Spike>& spikes, int* fiveChInterp, 
 			unsigned short* vm, int t0);
 
 	void findSpikes(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
 			int start, int t0, int tInc);
+
+    void findSpikesSeq(unsigned short* vm, int* fourChInterp, int* fiveChInterp, 
+                                 int start, int t0, int tInc);
 
 	// C++11 multi-threaded functions
 	void computeFourChInterpThread(int threadID, int* fourChInterp, int* V, 
@@ -61,6 +65,9 @@ private:
 
 	void preprocessDataThread(int threadID, unsigned short* vm, int* vGlobal, 
 			int start, int tInc, int* Qdiff, int* Qmin, int* vGlobalMovingAvg);
+
+	void findSpikesThread(int threadID, int t, int* fourChInterp, 
+			int* fiveChInterp, int t0);
 
 	// SYCL functions	
 	int* computeFiveChInterpSYCL(int* V, int start, int tInc);
@@ -120,5 +127,9 @@ private:
 
 	int nthreads;
 	std::thread* threads;
+
+	int nParFindThreads;
+	std::thread* parFindThreads;
+
 };
 };
